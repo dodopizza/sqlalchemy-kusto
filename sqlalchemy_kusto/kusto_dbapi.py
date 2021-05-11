@@ -2,7 +2,6 @@ import itertools
 import json
 from collections import namedtuple, OrderedDict
 from urllib import parse
-from azure.kusto.data import KustoClient, KustoConnectionStringBuilder, ClientRequestProperties
 
 
 class Type(object):
@@ -109,86 +108,6 @@ def get_type(value):
         return Type.NUMBER
 
     raise exceptions.Error("Value of unknown type: {value}".format(value=value))
-
-
-class Connection(object):
-    """Connection to a Druid database."""
-
-    def __init__(
-        self,
-        host="localhost",
-        port=8082,
-        path="/druid/v2/sql/",
-        scheme="http",
-        user=None,
-        password=None,
-        context=None,
-        header=False,
-        ssl_verify_cert=True,
-        ssl_client_cert=None,
-        proxies=None,
-    ):
-        netloc = "{host}:{port}".format(host=host, port=port)
-        self.url = parse.urlunparse((scheme, netloc, path, None, None, None))
-        self.context = context or {}
-        self.closed = False
-        self.cursors = []
-        self.header = header
-        self.user = user
-        self.password = password
-        self.ssl_verify_cert = ssl_verify_cert
-        self.ssl_client_cert = ssl_client_cert
-        self.proxies = proxies
-
-    @check_closed
-    def close(self):
-        """Close the connection now."""
-        self.closed = True
-        for cursor in self.cursors:
-            try:
-                cursor.close()
-            except exceptions.Error:
-                pass  # already closed
-
-    @check_closed
-    def commit(self):
-        """
-        Commit any pending transaction to the database.
-
-        Not supported.
-        """
-        pass
-
-    @check_closed
-    def cursor(self):
-        """Return a new Cursor Object using the connection."""
-
-        cursor = Cursor(
-            self.url,
-            self.user,
-            self.password,
-            self.context,
-            self.header,
-            self.ssl_verify_cert,
-            self.ssl_client_cert,
-            self.proxies,
-        )
-
-        self.cursors.append(cursor)
-
-        return cursor
-
-    @check_closed
-    def execute(self, operation, parameters=None):
-        cursor = self.cursor()
-        return cursor.execute(operation, parameters)
-
-    def __enter__(self):
-        return self.cursor()
-
-    def __exit__(self, *exc):
-        self.close()
-
 
 def rows_from_chunks(chunks):
     """

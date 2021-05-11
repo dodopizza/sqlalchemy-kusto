@@ -8,8 +8,8 @@ class Cursor(object):
 
     def __init__(
         self,
-        kusto_client: KustoClient = None,
-        database: str = None,
+        kusto_client: KustoClient,
+        database: str,
         properties: Optional[ClientRequestProperties] = None,
     ):
         self.kusto_client = kusto_client
@@ -91,14 +91,3 @@ class Cursor(object):
         return next(self._results)
 
     next = __next__
-
-
-def check_result(f):
-    """Decorator that checks if the cursor has results from `execute`."""
-
-    def g(self, *args, **kwargs):
-        if self._results is None:
-            raise Exception("Called before `execute`")
-        return f(self, *args, **kwargs)
-
-    return g
