@@ -1,7 +1,7 @@
 from sqlalchemy.dialects import registry
 import pytest
 
-registry.register("access.pyodbc", "sqlalchemy_access.pyodbc", "AccessDialect_pyodbc")
+registry.register("kusto", "kusto.http", "kusto.https")
 
 pytest.register_assert_rewrite("sqlalchemy.testing.assertions")
 
