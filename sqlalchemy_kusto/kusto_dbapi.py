@@ -1,49 +1,25 @@
-import itertools
-import json
-from collections import namedtuple, OrderedDict
-from urllib import parse
-
-
-class Type(object):
-    STRING = 1
-    NUMBER = 2
-    BOOLEAN = 3
+from sqlalchemy_kusto.dbapi_connection import Connection
 
 
 def connect(
-    host="localhost",
-    port=8082,
-    path="/druid/v2/sql/",
-    scheme="http",
-    user=None,
-    password=None,
-    context=None,
-    header=False,
-    ssl_verify_cert=True,
-    ssl_client_cert=None,
-    proxies=None,
-):  # noqa: E125
+        cluster: str,
+        msi: bool = False,
+        user_msi: str = None,
+        azure_ad_client_id: str = None,
+        azure_ad_client_secret: str = None,
+        azure_ad_tenant_id: str = None,
+):
     """
     Constructor for creating a connection to the database.
 
-        >>> conn = connect('localhost', 8082)
-        >>> curs = conn.cursor()
-
     """
-    context = context or {}
-
     return Connection(
-        host,
-        port,
-        path,
-        scheme,
-        user,
-        password,
-        context,
-        header,
-        ssl_verify_cert,
-        ssl_client_cert,
-        proxies,
+        cluster,
+        msi,
+        user_msi,
+        azure_ad_client_id,
+        azure_ad_client_secret,
+        azure_ad_tenant_id,
     )
 
 
@@ -52,7 +28,7 @@ def check_closed(f):
 
     def g(self, *args, **kwargs):
         if self.closed:
-            raise exceptions.Error(
+            raise Exception(
                 "{klass} already closed".format(klass=self.__class__.__name__)
             )
         return f(self, *args, **kwargs)
@@ -65,115 +41,8 @@ def check_result(f):
 
     def g(self, *args, **kwargs):
         if self._results is None:
-            raise exceptions.Error("Called before `execute`")
+            raise Exception("Called before `execute`")
         return f(self, *args, **kwargs)
 
     return g
 
-
-def get_description_from_row(row):
-    """
-    Return description from a single row.
-
-    We only return the name, type (inferred from the data) and if the values
-    can be NULL. String columns in Druid are NULLable. Numeric columns are NOT
-    NULL.
-    """
-    return [
-        (
-            name,  # name
-            get_type(value),  # type_code
-            None,  # [display_size]
-            None,  # [internal_size]
-            None,  # [precision]
-            None,  # [scale]
-            get_type(value) == Type.STRING,  # [null_ok]
-        )
-        for name, value in row.items()
-    ]
-
-
-def get_type(value):
-    """
-    Infer type from value.
-
-    Note that bool is a subclass of int so order of statements matter.
-    """
-
-    if isinstance(value, str) or value is None:
-        return Type.STRING
-    elif isinstance(value, bool):
-        return Type.BOOLEAN
-    elif isinstance(value, (int, float)):
-        return Type.NUMBER
-
-    raise exceptions.Error("Value of unknown type: {value}".format(value=value))
-
-def rows_from_chunks(chunks):
-    """
-    A generator that yields rows from JSON chunks.
-
-    Druid will return the data in chunks, but they are not aligned with the
-    JSON objects. This function will parse all complete rows inside each chunk,
-    yielding them as soon as possible.
-    """
-    body = ""
-    for chunk in chunks:
-        if chunk:
-            body = "".join((body, chunk))
-
-        # find last complete row
-        boundary = 0
-        brackets = 0
-        in_string = False
-        for i, char in enumerate(body):
-            if char == '"':
-                if not in_string:
-                    in_string = True
-                elif body[i - 1] != "\\":
-                    in_string = False
-
-            if in_string:
-                continue
-
-            if char == "{":
-                brackets += 1
-            elif char == "}":
-                brackets -= 1
-                if brackets == 0 and i > boundary:
-                    boundary = i + 1
-
-        rows = body[:boundary].lstrip("[,")
-        body = body[boundary:]
-
-        for row in json.loads(
-            "[{rows}]".format(rows=rows), object_pairs_hook=OrderedDict
-        ):
-            yield row
-
-
-def apply_parameters(operation, parameters):
-    if not parameters:
-        return operation
-
-    escaped_parameters = {key: escape(value) for key, value in parameters.items()}
-    return operation % escaped_parameters
-
-
-def escape(value):
-    """
-    Escape the parameter value.
-
-    Note that bool is a subclass of int so order of statements matter.
-    """
-
-    if value == "*":
-        return value
-    elif isinstance(value, str):
-        return "'{}'".format(value.replace("'", "''"))
-    elif isinstance(value, bool):
-        return "TRUE" if value else "FALSE"
-    elif isinstance(value, (int, float)):
-        return value
-    elif isinstance(value, (list, tuple)):
-        return ", ".join(escape(element) for element in value)
