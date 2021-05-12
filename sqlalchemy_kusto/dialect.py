@@ -3,7 +3,6 @@ from sqlalchemy import types
 from sqlalchemy.engine import default
 from sqlalchemy.sql import compiler
 from typing import List
-
 from sqlalchemy_kusto import dbapi
 
 logger = logging.getLogger(__name__)
@@ -163,3 +162,12 @@ def parse_bool_argument(value: str) -> bool:
         return False
     else:
         raise ValueError(f"Expected boolean found {value}")
+
+
+KustoHTTPDialect = KustoDialect
+
+
+class KustoHTTPSDialect(KustoDialect):
+    scheme = "https"
+
+

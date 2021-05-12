@@ -1,5 +1,6 @@
 from sqlalchemy_kusto.dbapi_connection import Connection
 
+# paramstyle = "pyformat"
 
 def connect(
         cluster: str,

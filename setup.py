@@ -13,9 +13,9 @@ setup(
     zip_safe=False,
     entry_points={
         "sqlalchemy.dialects": [
-            "kusto = es.elastic.sqlalchemy:ESHTTPDialect",
-            "kusto.http = es.elastic.sqlalchemy:ESHTTPDialect",
-            "kusto.https = es.elastic.sqlalchemy:ESHTTPSDialect"
+            "kusto = sqlalchemy_kusto.dialect:KustoHTTPDialect",
+            "kusto.http = sqlalchemy_kusto.dialect:KustoHTTPDialect",
+            "kusto.https = sqlalchemy_kusto.dialect:KustoHTTPSDialect"
         ]
     },
     install_requires=["azure-kusto-data>=2.1.1", "sqlalchemy"]
