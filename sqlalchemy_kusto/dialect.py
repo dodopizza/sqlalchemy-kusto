@@ -50,7 +50,7 @@ class KustoTypeCompiler(compiler.GenericTypeCompiler):
     pass
 
 
-class BaseKustoDialect(default.DefaultDialect):
+class KustoDialect(default.DefaultDialect):
     name = "kusto"
     scheme = "http"
     driver = "rest"
