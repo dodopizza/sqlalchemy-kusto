@@ -2,8 +2,10 @@ import logging
 from sqlalchemy import types
 from sqlalchemy.engine import default
 from sqlalchemy.sql import compiler
-from sqlalchemy_kusto import kusto_dbapi
 from typing import List
+
+from sqlalchemy_kusto import dbapi
+
 logger = logging.getLogger(__name__)
 
 
@@ -77,7 +79,7 @@ class KustoDialect(default.DefaultDialect):
 
     @classmethod
     def dbapi(cls):
-        return kusto_dbapi
+        return dbapi
 
     def create_connect_args(self, url):
         kwargs = {
