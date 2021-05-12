@@ -1,6 +1,5 @@
 from sqlalchemy import create_engine
 from azure.kusto.data import KustoConnectionStringBuilder, KustoClient, ClientRequestProperties
-
 from sqlalchemy_kusto import connect
 
 
@@ -8,9 +7,10 @@ def test():
     assert True
 
 
-def test_connect():
-    connection = connect("dododevkusto.westeurope", "deltalake_serving", True)
-    assert connection is not None
+# def test_connect():
+#     x = 5
+#     connection = connect("dododevkusto.westeurope", "deltalake_serving", True)
+#     assert connection is not None
 
 
 def test_execute():
