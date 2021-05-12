@@ -81,8 +81,13 @@ class KustoDialect(default.DefaultDialect):
         return sqlalchemy_kusto
 
     def create_connect_args(self, url):
-        kwargs = url.translate_connect_args()
-        kwargs.update(url.query)
+        kwargs = {
+            "cluster": "https://" + url.host,
+            "database": url.database,
+        }
+
+        if url.query:
+            kwargs.update(url.query)
 
         for name, parse_func in self._map_parse_connection_parameters.items():
             if name in kwargs:

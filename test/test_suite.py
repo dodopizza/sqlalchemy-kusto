@@ -9,10 +9,9 @@ def test():
     assert True
 
 
-# def test_connect():
-#     x = 5
-#     connection = connect("dododevkusto.westeurope", "deltalake_serving", True)
-#     assert connection is not None
+def test_connect():
+    connection = connect("dododevkusto.westeurope", "deltalake_serving", True)
+    assert connection is not None
 
 
 def test_execute():
@@ -40,6 +39,13 @@ def test_kusto_client():
 
 # @patch("sqlalchemy_kusto.__init__")
 def test_alchemy():
-    engine = create_engine("kusto://dododevkusto.westeurope.kusto.windows.net")
+    azure_ad_client_id = ""
+    azure_ad_client_secret = ""
+    azure_ad_tenant_id = ""
+    engine = create_engine(f"kusto://dododevkusto.westeurope.kusto.windows.net/deltalake_serving?"
+                           f"msi=False&azure_ad_client_id={azure_ad_client_id}&"
+                           f"azure_ad_client_secret={azure_ad_client_secret}&"
+                           f"azure_ad_tenant_id={azure_ad_tenant_id}")
     engine.connect()
+    engine.execute(".show tables")
     assert engine is not None
