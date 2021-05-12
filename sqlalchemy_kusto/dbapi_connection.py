@@ -1,5 +1,5 @@
 from sqlalchemy_kusto.dbapi_cursor import Cursor
-from sqlalchemy_kusto.kusto_dbapi import check_closed
+from sqlalchemy_kusto.utils import check_closed
 from azure.kusto.data import KustoClient, KustoConnectionStringBuilder, ClientRequestProperties
 
 

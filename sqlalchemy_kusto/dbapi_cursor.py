@@ -1,4 +1,4 @@
-from sqlalchemy_kusto.kusto_dbapi import check_closed, check_result
+from sqlalchemy_kusto.utils import check_closed, check_result
 from azure.kusto.data import KustoClient, ClientRequestProperties
 from typing import Optional
 
