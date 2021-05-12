@@ -2,27 +2,34 @@ import logging
 from sqlalchemy import types
 from sqlalchemy.engine import default
 from sqlalchemy.sql import compiler
-
-import sqlalchemy_kusto
-
+from sqlalchemy_kusto import kusto_dbapi
+from typing import List
 logger = logging.getLogger(__name__)
 
 
+def parse_bool_argument(value: str) -> bool:
+    if value in ("True", "true"):
+        return True
+    elif value in ("False", "false"):
+        return False
+    else:
+        raise ValueError(f"Expected boolean found {value}")
+
+
 type_map = {
-    "char": types.String,
-    "varchar": types.String,
-    "float": types.Float,
+    "boolean": types.Boolean,
+    "datetime": types.TIMESTAMP,
+    "datetime": types.DATE,
+    "dynamic": types.String,
+    "stringbuffer": types.String,
+    "guid": types.String,
+    "int": types.BigInteger,
+    "long": types.BigInteger,
+    "real": types.Float,
+    "string": types.String,
+    "timespan": types.String,
     "decimal": types.Float,
     "real": types.Float,
-    "double": types.Float,
-    "boolean": types.Boolean,
-    "tinyint": types.BigInteger,
-    "smallint": types.BigInteger,
-    "integer": types.BigInteger,
-    "bigint": types.BigInteger,
-    "timestamp": types.TIMESTAMP,
-    "date": types.DATE,
-    "other": types.BLOB,
 }
 
 
@@ -44,7 +51,6 @@ class KustoTypeCompiler(compiler.GenericTypeCompiler):
 
 
 class BaseKustoDialect(default.DefaultDialect):
-
     name = "kusto"
     scheme = "http"
     driver = "rest"
@@ -61,12 +67,17 @@ class BaseKustoDialect(default.DefaultDialect):
     description_encoding = None
     supports_native_boolean = True
     supports_simple_order_by_label = True
-
-    # _not_supported_column_types = ["object", "nested"]
+    _map_parse_connection_parameters = {
+        "msi": parse_bool_argument,
+        "azure_ad_client_id": str,
+        "azure_ad_client_secret": str,
+        "azure_ad_tenant_id": str,
+        "user_msi": str,
+    }
 
     @classmethod
     def dbapi(cls):
-        return sqlalchemy_kusto
+        return kusto_dbapi
 
     def create_connect_args(self, url):
         kwargs = {
@@ -84,25 +95,38 @@ class BaseKustoDialect(default.DefaultDialect):
             if name in kwargs:
                 kwargs[name] = parse_func(url.query[name])
 
-        return ([], kwargs)
+        return [], kwargs
 
     def get_schema_names(self, connection, **kwargs):
-        # ES does not have the concept of a schema
-        ".show databases | project DatabaseName"
-
-        return [DEFAULT_SCHEMA]
+        result = connection.execute(".show databases | project DatabaseName")
+        return [row.DatabaseName for row in result]
 
     def has_table(self, connection, table_name, schema=None):
         return table_name in self.get_table_names(connection, schema)
 
     def get_table_names(self, connection, schema=None, **kwargs) -> List[str]:
-        pass  # pragma: no cover
+        if schema:
+            database_subquery = f"| where DatabaseName == \"{schema}\""
+        result = connection.execute(f".show tables {database_subquery}  | project TableName")
+        return [row.TableName for row in result]
 
     def get_columns(self, connection, table_name, schema=None, **kw):
-        pass  # pragma: no cover
+        query = f".show table {table_name}"
+        result = connection.execute(query)
+
+        return [
+            {
+                "name": row.AttributeName,
+                "type": type_map[row.AttributeType.lower()],
+                "nullable": True,
+                "default": "",
+            }
+            for row in result
+        ]
 
     def get_view_names(self, connection, schema=None, **kwargs):
-        return []  # pragma: no cover
+        result = connection.execute(f".show materialized-views  | project Name")
+        return [row.Name for row in result]
 
     def get_table_options(self, connection, table_name, schema=None, **kwargs):
         return {}
@@ -163,3 +187,12 @@ def get_type(data_type: str) -> int:
         logger.warning(f"Unknown type found {data_type} reverting to string")
         type_ = types.String
     return type_
+
+
+def parse_bool_argument(value: str) -> bool:
+    if value in ("True", "true"):
+        return True
+    elif value in ("False", "false"):
+        return False
+    else:
+        raise ValueError(f"Expected boolean found {value}")
