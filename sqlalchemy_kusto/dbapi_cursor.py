@@ -1,3 +1,5 @@
+from collections import namedtuple
+
 from sqlalchemy_kusto.utils import check_closed, check_result
 from azure.kusto.data import KustoClient, ClientRequestProperties
 from typing import Optional
@@ -37,8 +39,13 @@ class Cursor(object):
     @check_closed
     def execute(self, operation, parameters=None):
         query = apply_parameters(operation, parameters)
-        server_response = self.kusto_client.execute_query(self.database, query, self.properties)
-        self._results = [row for row in server_response.primary_results[0]]
+        server_response = self.kusto_client.execute(self.database, query, self.properties)
+        named_rows = []
+        column_names = [col.column_name for col in server_response.primary_results[0].columns]
+        named_row = namedtuple("Row", column_names, rename=True)
+        for row in server_response.primary_results[0]:
+            named_rows += named_row(*row.to_list())
+        self._results = named_rows
         return self
 
     @check_closed
