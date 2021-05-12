@@ -1,3 +1,5 @@
+from unittest.mock import patch
+
 from sqlalchemy import create_engine
 from azure.kusto.data import KustoConnectionStringBuilder, KustoClient, ClientRequestProperties
 
@@ -36,7 +38,8 @@ def test_kusto_client():
     assert response is not None
 
 
-def test_connect():
+# @patch("sqlalchemy_kusto.__init__")
+def test_alchemy():
     engine = create_engine("kusto://dododevkusto.westeurope.kusto.windows.net")
     engine.connect()
     assert engine is not None
