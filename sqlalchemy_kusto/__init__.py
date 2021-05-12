@@ -1,5 +1,4 @@
 from sqlalchemy_kusto.dbapi import connect
-
 from sqlalchemy_kusto.errors import (
     DatabaseError,
     DataError,
@@ -13,6 +12,7 @@ from sqlalchemy_kusto.errors import (
     Warning,
 )
 
+print("init sqlalchemy kusto=======================================")
 __all__ = [
     "connect",
     "apilevel",
