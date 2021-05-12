@@ -37,8 +37,8 @@ class Cursor(object):
     @check_closed
     def execute(self, operation, parameters=None):
         query = apply_parameters(operation, parameters)
-        self._results = self.kusto_client.execute_query(self.database, query, self.properties)
-
+        server_response = self.kusto_client.execute_query(self.database, query, self.properties)
+        self._results = [row for row in server_response.primary_results[0]]
         return self
 
     @check_closed
