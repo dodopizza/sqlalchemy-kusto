@@ -162,33 +162,6 @@ class BaseKustoDialect(default.DefaultDialect):
         return True
 
 
-def get_type(data_type: str) -> int:
-    type_map = {
-        "bytes": types.LargeBinary,
-        "boolean": types.Boolean,
-        "date": types.DateTime,
-        "datetime": types.DateTime,
-        "double": types.Numeric,
-        "text": types.String,
-        "keyword": types.String,
-        "integer": types.Integer,
-        "half_float": types.Float,
-        "geo_point": types.String,
-        # TODO get a solution for nested type
-        "nested": types.String,
-        # TODO get a solution for object
-        "object": types.BLOB,
-        "long": types.BigInteger,
-        "float": types.Float,
-        "ip": types.String,
-    }
-    type_ = type_map.get(data_type)
-    if not type_:
-        logger.warning(f"Unknown type found {data_type} reverting to string")
-        type_ = types.String
-    return type_
-
-
 def parse_bool_argument(value: str) -> bool:
     if value in ("True", "true"):
         return True
