@@ -82,16 +82,8 @@ class KustoDialect(default.DefaultDialect):
         return dbapi
 
     def create_connect_args(self, url):
-        kwargs = {
-            "host": url.host,
-            "port": url.port or 9200,
-            "path": url.database,
-            "scheme": self.scheme,
-            "user": url.username or None,
-            "password": url.password or None,
-        }
-        if url.query:
-            kwargs.update(url.query)
+        kwargs = url.translate_connect_args()
+        kwargs.update(url.query)
 
         for name, parse_func in self._map_parse_connection_parameters.items():
             if name in kwargs:
