@@ -3,6 +3,7 @@ from sqlalchemy_kusto.dbapi_connection import Connection
 
 def connect(
         cluster: str,
+        database: str,
         msi: bool = False,
         user_msi: str = None,
         azure_ad_client_id: str = None,
@@ -15,6 +16,7 @@ def connect(
     """
     return Connection(
         cluster,
+        database,
         msi,
         user_msi,
         azure_ad_client_id,

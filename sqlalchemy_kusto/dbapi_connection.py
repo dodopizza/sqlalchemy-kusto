@@ -9,6 +9,7 @@ class Connection(object):
     def __init__(
             self,
             cluster: str,
+            database: str,
             msi: bool = False,
             user_msi: str = None,
             azure_ad_client_id: str = None,
@@ -27,6 +28,7 @@ class Connection(object):
             user_msi)
 
         self.kusto_client = KustoClient(kcsb)
+        self.database = database
         self.properties = ClientRequestProperties()
 
     @staticmethod
