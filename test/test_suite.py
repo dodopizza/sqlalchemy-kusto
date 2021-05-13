@@ -37,15 +37,16 @@ def test_kusto_client():
     assert response is not None
 
 
-# @patch("sqlalchemy_kusto.__init__")
 def test_alchemy():
     azure_ad_client_id = ""
     azure_ad_client_secret = ""
     azure_ad_tenant_id = ""
-    engine = create_engine(f"kusto://dododevkusto.westeurope.kusto.windows.net/deltalake_serving?"
+    engine = create_engine(f"kusto+https://dododevkusto.westeurope.kusto.windows.net/deltalake_serving?"
                            f"msi=False&azure_ad_client_id={azure_ad_client_id}&"
                            f"azure_ad_client_secret={azure_ad_client_secret}&"
                            f"azure_ad_tenant_id={azure_ad_tenant_id}")
     engine.connect()
-    engine.execute(".show tables")
+    result = engine.execute(".show tables")
+    print("\n")
+    print("\n".join([str(r) for r in result.fetchall()]))
     assert engine is not None

@@ -1,18 +1,26 @@
 from collections import namedtuple
 
+from azure.kusto.data._models import KustoResultColumn
+
 from sqlalchemy_kusto.utils import check_closed, check_result
 from azure.kusto.data import KustoClient, ClientRequestProperties
 from typing import Optional
+
+
+CursorDescriptionRow = namedtuple(
+        "CursorDescriptionRow",
+        ["name", "type", "display_size", "internal_size", "precision", "scale", "null_ok"],
+    )
 
 
 class Cursor(object):
     """Connection cursor."""
 
     def __init__(
-        self,
-        kusto_client: KustoClient,
-        database: str,
-        properties: Optional[ClientRequestProperties] = None,
+            self,
+            kusto_client: KustoClient,
+            database: str,
+            properties: Optional[ClientRequestProperties] = None,
     ):
         self.kusto_client = kusto_client
         self.database = database
@@ -28,7 +36,7 @@ class Cursor(object):
         # consume the iterator
         results = list(self._results)
         n = len(results)
-        self._results = iter(results)
+        # self._results = iter(results)
         return n
 
     @check_closed
@@ -40,12 +48,11 @@ class Cursor(object):
     def execute(self, operation, parameters=None):
         query = apply_parameters(operation, parameters)
         server_response = self.kusto_client.execute(self.database, query, self.properties)
-        named_rows = []
-        column_names = [col.column_name for col in server_response.primary_results[0].columns]
-        named_row = namedtuple("Row", column_names, rename=True)
+        rows = []
         for row in server_response.primary_results[0]:
-            named_rows += named_row(*row.to_list())
-        self._results = named_rows
+            rows.append(tuple(row.to_list()))
+        self._results = rows
+        self.description = self._get_description_from_columns(server_response.primary_results[0].columns)
         return self
 
     @check_closed
@@ -64,10 +71,11 @@ class Cursor(object):
     @check_result
     @check_closed
     def fetchmany(self, size=None):
-        raise NotImplementedError(
-            "`fetchmany` is not supported, use `execute` instead"
-        )
-
+        if size is not None:
+            raise NotImplementedError(
+                "`fetchmany` is not supported, use `execute` instead"
+            )
+        return list(self._results)
 
     @check_result
     @check_closed
@@ -88,6 +96,23 @@ class Cursor(object):
     def setoutputsizes(self, sizes):
         # not supported
         pass
+
+
+
+    @staticmethod
+    def _get_description_from_columns(columns: KustoResultColumn):
+        return [
+            CursorDescriptionRow(
+                name=column.column_name,
+                type=column.column_type,
+                display_size=None,
+                internal_size=None,
+                precision=None,
+                scale=None,
+                null_ok=True,
+            )
+            for column in columns
+        ]
 
     @check_closed
     def __iter__(self):
