@@ -66,7 +66,7 @@ class Cursor(object):
     @check_closed
     def fetchone(self):
         if self.rowcount > self.current_item_index:
-            item = list(self._results)[self.current_item_index]
+            item = self._results[self.current_item_index]
             self.current_item_index += 1
             return item
         else:
@@ -75,11 +75,12 @@ class Cursor(object):
     @check_result
     @check_closed
     def fetchmany(self, size=None):
-        if size is not None:
-            raise NotImplementedError(
-                "`fetchmany` is not supported, use `execute` instead"
-            )
-        return list(self._results)
+        if size:
+            items = self._results[self.current_item_index:self.current_item_index+size]
+            self.current_item_index += size
+            return items
+        else:
+            return self._results
 
     @check_result
     @check_closed
