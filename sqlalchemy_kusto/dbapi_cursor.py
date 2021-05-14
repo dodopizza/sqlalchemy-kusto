@@ -28,6 +28,7 @@ class Cursor(object):
         self.closed = False
         self.description = None
         self._results = None
+        self.current_item_index = 0
 
     @property
     @check_result
@@ -64,9 +65,12 @@ class Cursor(object):
     @check_result
     @check_closed
     def fetchone(self):
-        raise NotImplementedError(
-            "`fetchone` is not supported, use `execute` instead"
-        )
+        if self.rowcount > self.current_item_index:
+            item = list(self._results)[self.current_item_index]
+            self.current_item_index += 1
+            return item
+        else:
+            return None
 
     @check_result
     @check_closed
