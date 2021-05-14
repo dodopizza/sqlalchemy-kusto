@@ -44,7 +44,39 @@ class KustoIdentifierPreparer(compiler.IdentifierPreparer):
 
 
 class KustoCompiler(compiler.SQLCompiler):
-    pass
+
+    def get_select_precolumns(self, select, **kw):
+        """ Kusto puts TOP, it's version of LIMIT here """
+
+        s = super(KustoCompiler, self).get_select_precolumns(select, **kw)
+
+        if select._has_row_limiting_clause and self._use_top(select):
+            # ODBC drivers and possibly others
+            # don't support bind params in the SELECT clause on SQL Server.
+            # so have to use literal here.
+            kw["literal_execute"] = True
+            s += "TOP %s " % self.process(
+                self._get_limit_or_fetch(select), **kw
+            )
+            if select._fetch_clause is not None:
+                if select._fetch_clause_options["percent"]:
+                    s += "PERCENT "
+                if select._fetch_clause_options["with_ties"]:
+                    s += "WITH TIES "
+
+        return s
+
+    def _get_limit_or_fetch(self, select):
+        if select._fetch_clause is None:
+            return select._limit_clause
+        else:
+            return select._fetch_clause
+
+    def fetch_clause(self, cs, **kwargs):
+        return ""
+
+    def limit_clause(self, cs, **kwargs):
+        return ""
 
 
 class KustoTypeCompiler(compiler.GenericTypeCompiler):
@@ -153,11 +185,21 @@ class KustoDialect(default.DefaultDialect):
     def do_rollback(self, dbapi_connection):
         pass
 
+
+
     def _check_unicode_returns(self, connection, additional_tests=None):
         return True
 
     def _check_unicode_description(self, connection):
         return True
+
+    def do_ping(self, connection):
+        try:
+            query = f".show tables"
+            result = connection.execute(query)
+            return True
+        except Exception:
+           return False
 
 
 def parse_bool_argument(value: str) -> bool:

@@ -50,3 +50,14 @@ def test_alchemy():
     print("\n")
     print("\n".join([str(r) for r in result.fetchall()]))
     assert engine is not None
+
+def test_alchemy_ping():
+    azure_ad_client_id = ""
+    azure_ad_client_secret = ""
+    azure_ad_tenant_id = ""
+    engine = create_engine(f"kusto+https://dododevkusto.westeurope.kusto.windows.net/deltalake_serving?"
+                           f"msi=False&azure_ad_client_id={azure_ad_client_id}&"
+                           f"azure_ad_client_secret={azure_ad_client_secret}&"
+                           f"azure_ad_tenant_id={azure_ad_tenant_id}")
+    engine.connect()
+    engine.dialect.do_ping(engine.raw_connection())
