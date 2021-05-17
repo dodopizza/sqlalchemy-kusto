@@ -47,17 +47,14 @@ class Cursor(object):
 
     @check_closed
     def execute(self, operation, parameters=None):
-        return self._execute(self.properties, operation, parameters)
+        if operation.startswith("."):
+            properties = ClientRequestProperties()
+            properties.set_option("query_language", "kql")
+        else:
+            properties = self.properties
 
-    @check_closed
-    def execute_ddl(self, operation, parameters=None):
-        ddl_properties = ClientRequestProperties()
-        ddl_properties.set_option("query_language", "kql")
-        return self._execute(ddl_properties, operation, parameters)
-
-    def _execute(self, client_properties: ClientRequestProperties, operation, parameters=None):
         query = apply_parameters(operation, parameters)
-        server_response = self.kusto_client.execute(self.database, query, client_properties)
+        server_response = self.kusto_client.execute(self.database, query, properties)
         rows = []
         for row in server_response.primary_results[0]:
             rows.append(tuple(row.to_list()))

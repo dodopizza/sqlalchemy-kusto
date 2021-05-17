@@ -87,12 +87,6 @@ class Connection(object):
 
         return cursor
 
-    @check_closed
-    def execute(self, operation, parameters=None):
-        if operation.startswith("."):
-            return self.cursor().execute_ddl(operation, parameters)
-        return self.cursor().execute(operation, parameters)
-
     def __enter__(self):
         return self.cursor()
 
