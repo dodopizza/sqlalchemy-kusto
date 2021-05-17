@@ -89,7 +89,7 @@ class Connection(object):
 
     @check_closed
     def execute(self, operation, parameters=None):
-        if operation.startsWith("."):
+        if operation.startswith("."):
             return self.cursor().execute_ddl(operation, parameters)
         return self.cursor().execute(operation, parameters)
 
