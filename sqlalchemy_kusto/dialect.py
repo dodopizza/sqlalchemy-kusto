@@ -4,7 +4,7 @@ from sqlalchemy import types
 from sqlalchemy.engine import default
 from sqlalchemy.sql import compiler
 from typing import List
-from sqlalchemy.engine import Connection
+# from sqlalchemy.engine import Connection
 logger = logging.getLogger(__name__)
 
 
@@ -128,7 +128,7 @@ class KustoDialect(default.DefaultDialect):
 
         return [], kwargs
 
-    def get_schema_names(self, connection: Connection, **kwargs):
+    def get_schema_names(self, connection, **kwargs):
         result = connection.execute(".show databases | project DatabaseName")
         return [row.DatabaseName for row in result]
 
@@ -138,7 +138,8 @@ class KustoDialect(default.DefaultDialect):
     def get_table_names(self, connection, schema=None, **kwargs) -> List[str]:
         if schema:
             database_subquery = f"| where DatabaseName == \"{schema}\""
-        result = connection.execute(f".show tables {database_subquery}  | project TableName")
+        result = connection.execute(f".show tables {database_subquery} with (IncludeHiddenTables=false) "
+                                    f"| project TableName")
         return [row.TableName for row in result]
 
     def get_columns(self, connection, table_name, schema=None, **kw):

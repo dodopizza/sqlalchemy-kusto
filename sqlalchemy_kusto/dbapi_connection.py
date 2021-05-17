@@ -87,6 +87,11 @@ class Connection(object):
 
         return cursor
 
+    # DBAPI Spec does not mention this method but SQLAlchemy relies on it.
+    @check_closed
+    def execute(self, operation, parameters=None):
+        return self.cursor().execute(operation, parameters)
+
     def __enter__(self):
         return self.cursor()
 

@@ -25,7 +25,7 @@ def test_execute():
                          azure_ad_client_secret=AZURE_AD_CLIENT_SECRET,
                          azure_ad_tenant_id=AZURE_AD_TENANT_ID,
                          query_language="sql")
-    result = connection.cursor().execute("select top 5 * from MaterialTransferStream").fetchall()
+    result = connection.execute("select top 5 * from MaterialTransferStream").fetchall()
     print(result)
     assert result is not None
 
