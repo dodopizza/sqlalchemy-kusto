@@ -10,19 +10,21 @@ AZURE_AD_CLIENT_SECRET = os.environ["AZURE_AD_CLIENT_SECRET"]
 AZURE_AD_TENANT_ID = os.environ["AZURE_AD_TENANT_ID"]
 KUSTO_URL = os.environ["KUSTO_URL"]
 KUSTO_ALCHEMY_URL = "kusto+"+os.environ["KUSTO_URL"]
+DATABASE = os.environ["DATABASE"]
 
 
 def test_connect():
-    connection = connect("test", "deltalake_serving", True)
+    connection = connect("test", DATABASE, True)
     assert connection is not None
 
 
 def test_execute():
     connection = connect(KUSTO_URL,
-                         "deltalake_serving", False, None,
+                         DATABASE, False, None,
                          azure_ad_client_id=AZURE_AD_CLIENT_ID,
                          azure_ad_client_secret=AZURE_AD_CLIENT_SECRET,
-                         azure_ad_tenant_id=AZURE_AD_TENANT_ID)
+                         azure_ad_tenant_id=AZURE_AD_TENANT_ID,
+                         query_language="sql")
     result = connection.execute("select top 5 * from MaterialTransferStream").fetchall()
     print(result)
     assert result is not None
@@ -35,16 +37,17 @@ def test_kusto_client():
         AZURE_AD_CLIENT_SECRET,
         AZURE_AD_TENANT_ID)
     client = KustoClient(kcsb)
-    response = client.execute("deltalake_serving", ".show database schema as json", ClientRequestProperties())
+    response = client.execute(DATABASE, ".show database schema as json", ClientRequestProperties())
     print(response.primary_results[0])
     assert response is not None
 
 
 def test_alchemy():
-    engine = create_engine(f"{KUSTO_ALCHEMY_URL}/deltalake_serving?"
+    engine = create_engine(f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
                            f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
                            f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
-                           f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}")
+                           f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
+                           f"&query_language=sql")
     engine.connect()
     result = engine.execute("select top 5 * from MaterialTransferStream")
     print("\n")
@@ -52,7 +55,7 @@ def test_alchemy():
     assert engine is not None
 
 def test_alchemy_ping():
-    engine = create_engine(f"{KUSTO_ALCHEMY_URL}/deltalake_serving?"
+    engine = create_engine(f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
                            f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
                            f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
                            f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}")
@@ -62,10 +65,11 @@ def test_alchemy_ping():
 
 
 def test_fetch_one():
-    engine = create_engine(f"{KUSTO_ALCHEMY_URL}/deltalake_serving?"
+    engine = create_engine(f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
                            f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
                            f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
-                           f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}")
+                           f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
+                           f"&query_language=sql")
     engine.connect()
     result = engine.execute("select top 2 * from MaterialTransferStream")
     print("\n")
@@ -75,10 +79,11 @@ def test_fetch_one():
     assert engine is not None
 
 def test_fetch_many():
-    engine = create_engine(f"{KUSTO_ALCHEMY_URL}/deltalake_serving?"
+    engine = create_engine(f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
                            f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
                            f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
-                           f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}")
+                           f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
+                           f"&query_language=sql")
     engine.connect()
     result = engine.execute("select top 5 * from MaterialTransferStream")
     print("\n")
@@ -88,12 +93,26 @@ def test_fetch_many():
 
 
 def test_fetch_many():
-    engine = create_engine(f"{KUSTO_ALCHEMY_URL}/deltalake_serving?"
+    engine = create_engine(f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
                            f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
                            f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
-                           f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}")
+                           f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
+                           f"&query_language=sql")
     engine.connect()
     result = engine.execute("select top 5 * from MaterialTransferStream")
+    print("\n")
+    print("\n".join([str(r) for r in result.fetchall()]))
+    assert engine is not None
+
+
+def test_ddl():
+    engine = create_engine(f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
+                           f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
+                           f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
+                           f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
+                           f"&query_language=sql")
+    engine.connect()
+    result = engine.execute(".show tables")
     print("\n")
     print("\n".join([str(r) for r in result.fetchall()]))
     assert engine is not None

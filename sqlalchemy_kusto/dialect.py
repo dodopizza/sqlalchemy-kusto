@@ -4,7 +4,7 @@ from sqlalchemy import types
 from sqlalchemy.engine import default
 from sqlalchemy.sql import compiler
 from typing import List
-
+from sqlalchemy.engine import Connection
 logger = logging.getLogger(__name__)
 
 
@@ -106,6 +106,7 @@ class KustoDialect(default.DefaultDialect):
         "azure_ad_client_secret": str,
         "azure_ad_tenant_id": str,
         "user_msi": str,
+        "query_language": str
     }
 
     @classmethod
@@ -127,7 +128,7 @@ class KustoDialect(default.DefaultDialect):
 
         return [], kwargs
 
-    def get_schema_names(self, connection, **kwargs):
+    def get_schema_names(self, connection: Connection, **kwargs):
         result = connection.execute(".show databases | project DatabaseName")
         return [row.DatabaseName for row in result]
 

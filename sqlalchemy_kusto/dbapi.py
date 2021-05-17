@@ -9,6 +9,7 @@ def connect(
         azure_ad_client_id: str = None,
         azure_ad_client_secret: str = None,
         azure_ad_tenant_id: str = None,
+        query_language: str = None,
 ):
     """
     Constructor for creating a connection to the database.
@@ -22,6 +23,7 @@ def connect(
         azure_ad_client_id,
         azure_ad_client_secret,
         azure_ad_tenant_id,
+        query_language,
     )
 
 
