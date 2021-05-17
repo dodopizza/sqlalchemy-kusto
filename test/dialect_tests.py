@@ -18,12 +18,12 @@ def test_limit():
                   Column('UnitId', String),
                   )
 
-    query = stream.select().limit(10)
+    query = stream.select().limit(5)
     engine = create_engine(f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
                            f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
                            f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
                            f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}")
     engine.connect()
     result = engine.execute(query)
-    print(result.fetchone())
-    assert True
+    result_length = len(result.fetchall())
+    assert result_length == 5

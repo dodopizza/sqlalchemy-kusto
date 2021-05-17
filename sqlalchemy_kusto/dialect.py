@@ -1,11 +1,8 @@
 import sqlalchemy_kusto
-import logging
 from sqlalchemy import types
 from sqlalchemy.engine import default
 from sqlalchemy.sql import compiler
 from typing import List
-# from sqlalchemy.engine import Connection
-logger = logging.getLogger(__name__)
 
 
 def parse_bool_argument(value: str) -> bool:
@@ -49,20 +46,14 @@ class KustoCompiler(compiler.SQLCompiler):
 
     def get_select_precolumns(self, select, **kw):
         """ Kusto puts TOP, it's version of LIMIT here """
-
+        # sqlalchemy.sql.selectable.Select
         s = super(KustoCompiler, self).get_select_precolumns(select, **kw)
 
-        if hasattr(select, "_has_row_limiting_clause") and select._has_row_limiting_clause:
-            # ODBC drivers and possibly others
-            # don't support bind params in the SELECT clause on SQL Server.
-            # so have to use literal here.
+        if select._limit_clause is not None:
             kw["literal_execute"] = True
-            s += "TOP %s " % self.process(
-                self._get_limit_or_fetch(select), **kw
-            )
+            s += "TOP %s " % self.process(select._limit_clause, **kw)
 
         return s
-
 
     def _get_limit_or_fetch(self, select):
         if select._fetch_clause is None:
@@ -184,8 +175,6 @@ class KustoDialect(default.DefaultDialect):
     def do_rollback(self, dbapi_connection):
         pass
 
-
-
     def _check_unicode_returns(self, connection, additional_tests=None):
         return True
 
@@ -198,7 +187,7 @@ class KustoDialect(default.DefaultDialect):
             result = connection.execute(query)
             return True
         except Exception:
-           return False
+            return False
 
 
 def parse_bool_argument(value: str) -> bool:
@@ -215,5 +204,3 @@ KustoHTTPDialect = KustoDialect
 
 class KustoHTTPSDialect(KustoDialect):
     scheme = "https"
-
-
