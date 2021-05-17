@@ -1,7 +1,7 @@
 import os
 from setuptools import find_packages, setup
 
-VERSION = "0.0.6"
+VERSION = "0.0.7"
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 setup(

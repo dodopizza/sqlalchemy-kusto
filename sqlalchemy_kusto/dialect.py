@@ -24,8 +24,10 @@ type_map = {
     "dynamic": types.String,
     "stringbuffer": types.String,
     "guid": types.String,
-    "int": types.BigInteger,
+    "int": types.Integer,
+    "i32": types.Integer,
     "long": types.BigInteger,
+    "i64": types.BigInteger,
     "real": types.Float,
     "string": types.String,
     "timespan": types.String,
@@ -44,39 +46,40 @@ class KustoIdentifierPreparer(compiler.IdentifierPreparer):
 
 
 class KustoCompiler(compiler.SQLCompiler):
+    pass
+    # def get_select_precolumns(self, select, **kw):
+    #     """ Kusto puts TOP, it's version of LIMIT here """
+    #
+    #     s = super(KustoCompiler, self).get_select_precolumns(select, **kw)
+    #
+    #     if select._has_row_limiting_clause and self._use_top(select):
+    #         # ODBC drivers and possibly others
+    #         # don't support bind params in the SELECT clause on SQL Server.
+    #         # so have to use literal here.
+    #         kw["literal_execute"] = True
+    #         s += "TOP %s " % self.process(
+    #             self._get_limit_or_fetch(select), **kw
+    #         )
+    #         if select._fetch_clause is not None:
+    #             if select._fetch_clause_options["percent"]:
+    #                 s += "PERCENT "
+    #             if select._fetch_clause_options["with_ties"]:
+    #                 s += "WITH TIES "
+    #
+    #     return s
 
-    def get_select_precolumns(self, select, **kw):
-        """ Kusto puts TOP, it's version of LIMIT here """
 
-        s = super(KustoCompiler, self).get_select_precolumns(select, **kw)
-
-        if select._has_row_limiting_clause and self._use_top(select):
-            # ODBC drivers and possibly others
-            # don't support bind params in the SELECT clause on SQL Server.
-            # so have to use literal here.
-            kw["literal_execute"] = True
-            s += "TOP %s " % self.process(
-                self._get_limit_or_fetch(select), **kw
-            )
-            if select._fetch_clause is not None:
-                if select._fetch_clause_options["percent"]:
-                    s += "PERCENT "
-                if select._fetch_clause_options["with_ties"]:
-                    s += "WITH TIES "
-
-        return s
-
-    def _get_limit_or_fetch(self, select):
-        if select._fetch_clause is None:
-            return select._limit_clause
-        else:
-            return select._fetch_clause
-
-    def fetch_clause(self, cs, **kwargs):
-        return ""
-
-    def limit_clause(self, cs, **kwargs):
-        return ""
+    # def _get_limit_or_fetch(self, select):
+    #     if select._fetch_clause is None:
+    #         return select._limit_clause
+    #     else:
+    #         return select._fetch_clause
+    #
+    # def fetch_clause(self, cs, **kwargs):
+    #     return ""
+    #
+    # def limit_clause(self, cs, **kwargs):
+    #     return ""
 
 
 class KustoTypeCompiler(compiler.GenericTypeCompiler):
@@ -106,7 +109,6 @@ class KustoDialect(default.DefaultDialect):
         "azure_ad_client_secret": str,
         "azure_ad_tenant_id": str,
         "user_msi": str,
-        "query_language": str
     }
 
     @classmethod
@@ -138,7 +140,7 @@ class KustoDialect(default.DefaultDialect):
     def get_table_names(self, connection, schema=None, **kwargs) -> List[str]:
         if schema:
             database_subquery = f"| where DatabaseName == \"{schema}\""
-        result = connection.execute(f".show tables {database_subquery} with (IncludeHiddenTables=false) "
+        result = connection.execute(f".show tables {database_subquery} "
                                     f"| project TableName")
         return [row.TableName for row in result]
 

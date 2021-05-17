@@ -47,11 +47,12 @@ class Cursor(object):
 
     @check_closed
     def execute(self, operation, parameters=None):
-        if operation.startswith("."):
-            properties = ClientRequestProperties()
-            properties.set_option("query_language", "kql")
+        # https://docs.microsoft.com/en-us/azure/data-explorer/kusto/api/netfx/request-properties
+        properties = ClientRequestProperties() # TODO: need to copy from self.properties
+        if operation.lower().startswith("select"):
+            properties.set_option("query_language", "sql")
         else:
-            properties = self.properties
+            properties.set_option("query_language", "kql")
 
         query = apply_parameters(operation, parameters)
         server_response = self.kusto_client.execute(self.database, query, properties)

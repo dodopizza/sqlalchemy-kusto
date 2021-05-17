@@ -15,7 +15,6 @@ class Connection(object):
             azure_ad_client_id: str = None,
             azure_ad_client_secret: str = None,
             azure_ad_tenant_id: str = None,
-            query_language: str = "kql",
     ):
         self.closed = False
         self.cursors = []
@@ -31,8 +30,6 @@ class Connection(object):
         self.kusto_client = KustoClient(kcsb)
         self.database = database
         self.properties = ClientRequestProperties()
-        # https://docs.microsoft.com/en-us/azure/data-explorer/kusto/api/netfx/request-properties
-        self.properties.set_option("query_language", query_language)
 
     @staticmethod
     def get_connection_string_builder(
