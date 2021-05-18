@@ -1,16 +1,7 @@
 from sqlalchemy import create_engine
 from azure.kusto.data import KustoConnectionStringBuilder, KustoClient, ClientRequestProperties
 from sqlalchemy_kusto import connect
-import os
-from dotenv import load_dotenv
-
-load_dotenv()
-AZURE_AD_CLIENT_ID = os.environ["AZURE_AD_CLIENT_ID"]
-AZURE_AD_CLIENT_SECRET = os.environ["AZURE_AD_CLIENT_SECRET"]
-AZURE_AD_TENANT_ID = os.environ["AZURE_AD_TENANT_ID"]
-KUSTO_URL = os.environ["KUSTO_URL"]
-KUSTO_ALCHEMY_URL = "kusto+"+os.environ["KUSTO_URL"]
-DATABASE = os.environ["DATABASE"]
+from test.conftest import *
 
 
 def test_connect():

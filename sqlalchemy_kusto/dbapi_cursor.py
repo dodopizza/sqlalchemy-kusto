@@ -2,9 +2,11 @@ from collections import namedtuple
 
 from azure.kusto.data._models import KustoResultColumn
 
+from sqlalchemy_kusto import errors
 from sqlalchemy_kusto.utils import check_closed, check_result
 from azure.kusto.data import KustoClient, ClientRequestProperties
 from typing import Optional
+from azure.kusto.data.exceptions import KustoServiceError, KustoAuthenticationError
 
 
 CursorDescriptionRow = namedtuple(
@@ -55,7 +57,13 @@ class Cursor(object):
             properties.set_option("query_language", "kql")
 
         query = apply_parameters(operation, parameters)
-        server_response = self.kusto_client.execute(self.database, query, properties)
+        try:
+            server_response = self.kusto_client.execute(self.database, query, properties)
+        except KustoServiceError as kusto_error:
+            raise errors.DatabaseError(str(kusto_error))
+        except KustoAuthenticationError as context_error:
+            raise errors.OperationalError(str(context_error))
+
         rows = []
         for row in server_response.primary_results[0]:
             rows.append(tuple(row.to_list()))
