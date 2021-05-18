@@ -1,6 +1,6 @@
-from typing import List
+from typing import List, Any
 from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integer, Float
-from sqlalchemy.engine import default
+from sqlalchemy.engine import default, Connection
 from sqlalchemy.sql import compiler
 import sqlalchemy_kusto
 from sqlalchemy_kusto import OperationalError
@@ -117,21 +117,20 @@ class KustoDialect(default.DefaultDialect):
 
         return [], kwargs
 
-    # from sqlalchemy.engine (base) import Connection (connection inside - dbapi connection)
-    def get_schema_names(self, connection, **kwargs):   # pylint: disable=no-self-use
+    def get_schema_names(self, connection: Connection, **kwargs):   # pylint: disable=no-self-use
         result = connection.execute(".show databases | project DatabaseName")
         return [row.DatabaseName for row in result]
 
-    def has_table(self, connection, table_name: str, schema=None, **kw):
+    def has_table(self, connection: Connection, table_name: str, schema: str = None, **kw):
         return table_name in self.get_table_names(connection, schema)
 
-    def get_table_names(self, connection, schema=None, **kwargs) -> List[str]:
+    def get_table_names(self, connection: Connection, schema=None, **kwargs) -> List[str]:
         if schema:
             database_subquery = f'| where DatabaseName == "{schema}"'
         result = connection.execute(f".show tables {database_subquery} " f"| project TableName")
         return [row.TableName for row in result]
 
-    def get_columns(self, connection, table_name, schema=None, **kw):
+    def get_columns(self, connection: Connection, table_name: str, schema: str = None, **kw):
         query = f".show table {table_name}"
         result = connection.execute(query)
 
@@ -145,44 +144,45 @@ class KustoDialect(default.DefaultDialect):
             for row in result
         ]
 
-    def get_view_names(self, connection, schema=None, **kwargs):
+    def get_view_names(self, connection: Connection, schema: str = None, **kwargs):
         result = connection.execute(".show materialized-views  | project Name")
         return [row.Name for row in result]
 
-    def get_table_options(self, connection, table_name, schema=None, **kwargs):    # pylint: disable=no-self-use
+    def get_table_options(self, connection: Connection,  # pylint: disable=no-self-use
+                          table_name: str, schema: str = None, **kwargs):
         return {}
 
-    def get_pk_constraint(self, connection, table_name, schema=None, **kwargs):
+    def get_pk_constraint(self, connection: Connection, table_name: str, schema: str = None, **kwargs):
         return {"constrained_columns": [], "name": None}
 
     def get_foreign_keys(self, connection, table_name, schema=None, **kwargs):
         return []
 
-    def get_check_constraints(self, connection, table_name, schema=None, **kwargs):
+    def get_check_constraints(self, connection: Connection, table_name: str, schema: str = None, **kwargs):
         return []
 
-    def get_table_comment(self, connection, table_name, schema=None, **kwargs):
+    def get_table_comment(self, connection: Connection, table_name, schema=None, **kwargs):
         return {"text": ""}
 
-    def get_indexes(self, connection, table_name, schema=None, **kwargs):
+    def get_indexes(self, connection: Connection, table_name: str, schema: str = None, **kwargs):
         return []
 
-    def get_unique_constraints(self, connection, table_name, schema=None, **kwargs):
+    def get_unique_constraints(self, connection: Connection, table_name: str, schema: str = None, **kwargs):
         return []
 
-    def get_view_definition(self, connection, view_name, schema=None, **kwargs):
+    def get_view_definition(self, connection: Connection, view_name: str, schema: str = None, **kwargs):
         pass  # pragma: no cover
 
-    def do_rollback(self, dbapi_connection):
+    def _check_unicode_returns(self, connection: Connection, additional_tests: List[Any] = None):
+        return True
+
+    def _check_unicode_description(self, connection: Connection):
+        return True
+
+    def do_rollback(self, dbapi_connection: sqlalchemy_kusto.dbapi.Connection):
         pass
 
-    def _check_unicode_returns(self, connection, additional_tests=None):
-        return True
-
-    def _check_unicode_description(self, connection):
-        return True
-
-    def do_ping(self, dbapi_connection):
+    def do_ping(self, dbapi_connection: sqlalchemy_kusto.dbapi.Connection):
         try:
             query = ".show tables"
             dbapi_connection.execute(query)
