@@ -56,17 +56,11 @@ class KustoCompiler(compiler.SQLCompiler):
 
         return select_precolumns
 
-    # def _get_limit_or_fetch(self, select):
-    #     if select._fetch_clause is None:
-    #         return select._limit_clause
-    #     else:
-    #         return select._fetch_clause
-    #
-    # def fetch_clause(self, cs, **kwargs):
-    #     return ""
-    #
-    # def limit_clause(self, cs, **kwargs):
-    #     return ""
+    def fetch_clause(self, cs, **kwargs):
+        return ""
+
+    def limit_clause(self, cs, **kwargs):
+        return ""
 
 
 class KustoTypeCompiler(compiler.GenericTypeCompiler):
