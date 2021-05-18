@@ -1,4 +1,5 @@
 from sqlalchemy_kusto.dbapi import connect
+# pylint: disable=redefined-builtin
 from sqlalchemy_kusto.errors import (
     DatabaseError,
     DataError,
