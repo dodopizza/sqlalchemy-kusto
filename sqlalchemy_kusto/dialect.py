@@ -191,15 +191,6 @@ class KustoDialect(default.DefaultDialect):
             return False
 
 
-def parse_bool_argument(value: str) -> bool:
-    if value in ("True", "true"):
-        return True
-    elif value in ("False", "false"):
-        return False
-    else:
-        raise ValueError(f"Expected boolean found {value}")
-
-
 KustoHTTPDialect = KustoDialect
 
 
