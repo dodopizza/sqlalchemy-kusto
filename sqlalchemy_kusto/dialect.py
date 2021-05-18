@@ -3,6 +3,7 @@ from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integ
 from sqlalchemy.engine import default
 from sqlalchemy.sql import compiler
 import sqlalchemy_kusto
+from sqlalchemy_kusto import OperationalError
 
 
 def parse_bool_argument(value: str) -> bool:
@@ -72,6 +73,7 @@ class KustoTypeCompiler(compiler.GenericTypeCompiler):
 
 
 class KustoDialect(default.DefaultDialect):
+    """ See description sqlalchemy/engine/interfaces.py """
     name = "kusto"
     scheme = "http"
     driver = "rest"
@@ -97,7 +99,7 @@ class KustoDialect(default.DefaultDialect):
     }
 
     @classmethod
-    def dbapi(cls):     # pylint: method-hidden
+    def dbapi(cls):     # pylint: disable=method-hidden
         return sqlalchemy_kusto
 
     def create_connect_args(self, url):
@@ -115,12 +117,12 @@ class KustoDialect(default.DefaultDialect):
 
         return [], kwargs
 
-    # from sqlalchemy.engine import Connection
-    def get_schema_names(self, connection, **kwargs):
+    # from sqlalchemy.engine (base) import Connection (connection inside - dbapi connection)
+    def get_schema_names(self, connection, **kwargs):   # pylint: disable=no-self-use
         result = connection.execute(".show databases | project DatabaseName")
         return [row.DatabaseName for row in result]
 
-    def has_table(self, connection, table_name: str, schema=None):
+    def has_table(self, connection, table_name: str, schema=None, **kw):
         return table_name in self.get_table_names(connection, schema)
 
     def get_table_names(self, connection, schema=None, **kwargs) -> List[str]:
@@ -144,10 +146,10 @@ class KustoDialect(default.DefaultDialect):
         ]
 
     def get_view_names(self, connection, schema=None, **kwargs):
-        result = connection.execute(f".show materialized-views  | project Name")
+        result = connection.execute(".show materialized-views  | project Name")
         return [row.Name for row in result]
 
-    def get_table_options(self, connection, table_name, schema=None, **kwargs):
+    def get_table_options(self, connection, table_name, schema=None, **kwargs):    # pylint: disable=no-self-use
         return {}
 
     def get_pk_constraint(self, connection, table_name, schema=None, **kwargs):
@@ -180,12 +182,12 @@ class KustoDialect(default.DefaultDialect):
     def _check_unicode_description(self, connection):
         return True
 
-    def do_ping(self, connection):
+    def do_ping(self, dbapi_connection):
         try:
-            query = f".show tables"
-            result = connection.execute(query)
+            query = ".show tables"
+            dbapi_connection.execute(query)
             return True
-        except Exception:
+        except OperationalError:
             return False
 
 
