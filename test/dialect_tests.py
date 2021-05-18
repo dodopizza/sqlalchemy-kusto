@@ -1,6 +1,5 @@
+from test.conftest import KUSTO_ALCHEMY_URL, DATABASE, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
 from sqlalchemy import Table, Column, String, MetaData, create_engine
-from test.conftest import *
-from test.conftest import KUSTO_URL, KUSTO_ALCHEMY_URL, DATABASE, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
 
 
 def test_limit():

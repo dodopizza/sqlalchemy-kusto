@@ -1,5 +1,5 @@
-from sqlalchemy.dialects import registry
 import os
+from sqlalchemy.dialects import registry
 from dotenv import load_dotenv
 
 registry.register("kusto", "sqlalchemy_kusto.dialect", "KustoHTTPDialect")
