@@ -1,7 +1,7 @@
 from types import ModuleType
-from typing import List, Any, Dict, Optional, Tuple
+from typing import List, Any, Dict, Optional
 from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integer, Float
-from sqlalchemy.engine import default, Connection, URL
+from sqlalchemy.engine import default, Connection
 from sqlalchemy.sql import compiler
 import sqlalchemy_kusto
 from sqlalchemy_kusto import OperationalError
@@ -104,7 +104,8 @@ class KustoDialect(default.DefaultDialect):
     def dbapi(cls) -> ModuleType:  # pylint: disable=method-hidden
         return sqlalchemy_kusto
 
-    def create_connect_args(self, url: URL) -> Tuple[List[Any], Dict[str, Any]]:
+    def create_connect_args(self, url):
+        # def create_connect_args(self, url: URL) -> Tuple[List[Any], Dict[str, Any]]:
         kwargs: Dict[str, Any] = {
             "cluster": "https://" + url.host,
             "database": url.database,
