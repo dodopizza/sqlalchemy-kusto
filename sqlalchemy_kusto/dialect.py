@@ -50,7 +50,7 @@ class KustoCompiler(compiler.SQLCompiler):
         if select._limit_clause is not None:  # pylint: disable=protected-access
             kw["literal_execute"] = True
             select_precolumns += "TOP %s " % self.process(
-                select._limit_clause, **kw   # pylint: disable=protected-access
+                select._limit_clause, **kw  # pylint: disable=protected-access
             )
 
         return select_precolumns
@@ -74,6 +74,7 @@ class KustoTypeCompiler(compiler.GenericTypeCompiler):
 
 class KustoDialect(default.DefaultDialect):
     """ See description sqlalchemy/engine/interfaces.py """
+
     name = "kusto"
     scheme = "http"
     driver = "rest"
@@ -99,7 +100,7 @@ class KustoDialect(default.DefaultDialect):
     }
 
     @classmethod
-    def dbapi(cls):     # pylint: disable=method-hidden
+    def dbapi(cls):  # pylint: disable=method-hidden
         return sqlalchemy_kusto
 
     def create_connect_args(self, url):
@@ -117,7 +118,7 @@ class KustoDialect(default.DefaultDialect):
 
         return [], kwargs
 
-    def get_schema_names(self, connection: Connection, **kwargs):   # pylint: disable=no-self-use
+    def get_schema_names(self, connection: Connection, **kwargs):  # pylint: disable=no-self-use
         result = connection.execute(".show databases | project DatabaseName")
         return [row.DatabaseName for row in result]
 
@@ -148,8 +149,9 @@ class KustoDialect(default.DefaultDialect):
         result = connection.execute(".show materialized-views  | project Name")
         return [row.Name for row in result]
 
-    def get_table_options(self, connection: Connection,  # pylint: disable=no-self-use
-                          table_name: str, schema: str = None, **kwargs):
+    def get_table_options(
+        self, connection: Connection, table_name: str, schema: str = None, **kwargs  # pylint: disable=no-self-use
+    ):
         return {}
 
     def get_pk_constraint(self, connection: Connection, table_name: str, schema: str = None, **kwargs):
