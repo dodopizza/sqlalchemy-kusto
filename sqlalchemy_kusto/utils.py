@@ -1,20 +1,20 @@
-def check_closed(f):
+def check_closed(func):
     """Decorator that checks if connection/cursor is closed."""
 
-    def g(self, *args, **kwargs):
+    def decorator(self, *args, **kwargs):
         if self.closed:
             raise Exception("{klass} already closed".format(klass=self.__class__.__name__))
-        return f(self, *args, **kwargs)
+        return func(self, *args, **kwargs)
 
-    return g
+    return decorator
 
 
-def check_result(f):
+def check_result(func):
     """Decorator that checks if the cursor has results from `execute`."""
 
-    def g(self, *args, **kwargs):
-        if self._results is None:
+    def decorator(self, *args, **kwargs):
+        if self._results is None:  # pylint: disable=protected-access
             raise Exception("Called before `execute`")
-        return f(self, *args, **kwargs)
+        return func(self, *args, **kwargs)
 
-    return g
+    return decorator
