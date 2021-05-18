@@ -15,8 +15,8 @@ setup(
         "sqlalchemy.dialects": [
             "kusto = sqlalchemy_kusto.dialect:KustoHTTPDialect",
             "kusto.http = sqlalchemy_kusto.dialect:KustoHTTPDialect",
-            "kusto.https = sqlalchemy_kusto.dialect:KustoHTTPSDialect"
+            "kusto.https = sqlalchemy_kusto.dialect:KustoHTTPSDialect",
         ]
     },
-    install_requires=["azure-kusto-data>=2.1.1", "sqlalchemy"]
+    install_requires=["azure-kusto-data>=2.1.1", "sqlalchemy"],
 )

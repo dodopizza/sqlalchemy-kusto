@@ -43,9 +43,8 @@ class KustoIdentifierPreparer(compiler.IdentifierPreparer):
 
 
 class KustoCompiler(compiler.SQLCompiler):
-
     def get_select_precolumns(self, select, **kw):
-        """ Kusto puts TOP, it's version of LIMIT here """
+        """Kusto puts TOP, it's version of LIMIT here"""
         # sqlalchemy.sql.selectable.Select
         s = super(KustoCompiler, self).get_select_precolumns(select, **kw)
 
@@ -126,9 +125,8 @@ class KustoDialect(default.DefaultDialect):
 
     def get_table_names(self, connection, schema=None, **kwargs) -> List[str]:
         if schema:
-            database_subquery = f"| where DatabaseName == \"{schema}\""
-        result = connection.execute(f".show tables {database_subquery} "
-                                    f"| project TableName")
+            database_subquery = f'| where DatabaseName == "{schema}"'
+        result = connection.execute(f".show tables {database_subquery} " f"| project TableName")
         return [row.TableName for row in result]
 
     def get_columns(self, connection, table_name, schema=None, **kw):

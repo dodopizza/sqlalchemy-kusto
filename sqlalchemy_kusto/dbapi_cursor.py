@@ -10,19 +10,19 @@ from azure.kusto.data.exceptions import KustoServiceError, KustoAuthenticationEr
 
 
 CursorDescriptionRow = namedtuple(
-        "CursorDescriptionRow",
-        ["name", "type", "display_size", "internal_size", "precision", "scale", "null_ok"],
-    )
+    "CursorDescriptionRow",
+    ["name", "type", "display_size", "internal_size", "precision", "scale", "null_ok"],
+)
 
 
 class Cursor(object):
     """Connection cursor."""
 
     def __init__(
-            self,
-            kusto_client: KustoClient,
-            database: str,
-            properties: Optional[ClientRequestProperties] = None,
+        self,
+        kusto_client: KustoClient,
+        database: str,
+        properties: Optional[ClientRequestProperties] = None,
     ):
         self.kusto_client = kusto_client
         self.database = database
@@ -50,7 +50,7 @@ class Cursor(object):
     @check_closed
     def execute(self, operation, parameters=None):
         # https://docs.microsoft.com/en-us/azure/data-explorer/kusto/api/netfx/request-properties
-        properties = ClientRequestProperties() # TODO: need to copy from self.properties
+        properties = ClientRequestProperties()  # TODO: need to copy from self.properties
         if operation.lower().startswith("select"):
             properties.set_option("query_language", "sql")
         else:
@@ -73,9 +73,7 @@ class Cursor(object):
 
     @check_closed
     def executemany(self, operation, seq_of_parameters=None):
-        raise NotImplementedError(
-            "`executemany` is not supported, use `execute` instead"
-        )
+        raise NotImplementedError("`executemany` is not supported, use `execute` instead")
 
     @check_result
     @check_closed
@@ -91,7 +89,7 @@ class Cursor(object):
     @check_closed
     def fetchmany(self, size=None):
         if size:
-            items = self._results[self.current_item_index:self.current_item_index+size]
+            items = self._results[self.current_item_index : self.current_item_index + size]
             self.current_item_index += size
             return items
         else:
@@ -116,8 +114,6 @@ class Cursor(object):
     def setoutputsizes(self, sizes):
         # not supported
         pass
-
-
 
     @staticmethod
     def _get_description_from_columns(columns: KustoResultColumn):

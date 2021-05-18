@@ -7,25 +7,21 @@ class Connection(object):
     """Connection to Kusto cluster."""
 
     def __init__(
-            self,
-            cluster: str,
-            database: str,
-            msi: bool = False,
-            user_msi: str = None,
-            azure_ad_client_id: str = None,
-            azure_ad_client_secret: str = None,
-            azure_ad_tenant_id: str = None,
+        self,
+        cluster: str,
+        database: str,
+        msi: bool = False,
+        user_msi: str = None,
+        azure_ad_client_id: str = None,
+        azure_ad_client_secret: str = None,
+        azure_ad_tenant_id: str = None,
     ):
         self.closed = False
         self.cursors = []
 
         kcsb = self.get_connection_string_builder(
-            azure_ad_client_id,
-            azure_ad_client_secret,
-            azure_ad_tenant_id,
-            cluster,
-            msi,
-            user_msi)
+            azure_ad_client_id, azure_ad_client_secret, azure_ad_tenant_id, cluster, msi, user_msi
+        )
 
         self.kusto_client = KustoClient(kcsb)
         self.database = database
@@ -33,17 +29,12 @@ class Connection(object):
 
     @staticmethod
     def get_connection_string_builder(
-            azure_ad_client_id,
-            azure_ad_client_secret,
-            azure_ad_tenant_id,
-            cluster,
-            msi,
-            user_msi):
+        azure_ad_client_id, azure_ad_client_secret, azure_ad_tenant_id, cluster, msi, user_msi
+    ):
         # Managed Service Identity(MSI)
         if msi:
             return KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
-                cluster,
-                client_id=user_msi
+                cluster, client_id=user_msi
             )
         # Service Principal auth
         else:

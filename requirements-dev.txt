@@ -1,3 +1,4 @@
+black~=20.8b1
 build
 pytest
 python-dotenv
