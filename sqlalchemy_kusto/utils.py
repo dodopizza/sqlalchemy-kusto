@@ -3,9 +3,7 @@ def check_closed(f):
 
     def g(self, *args, **kwargs):
         if self.closed:
-            raise Exception(
-                "{klass} already closed".format(klass=self.__class__.__name__)
-            )
+            raise Exception("{klass} already closed".format(klass=self.__class__.__name__))
         return f(self, *args, **kwargs)
 
     return g
