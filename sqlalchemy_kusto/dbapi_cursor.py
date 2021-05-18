@@ -30,7 +30,7 @@ class Cursor:
         self._results = None
         self.current_item_index = 0
 
-    @property
+    @property  # type: ignore
     @check_result
     @check_closed
     def rowcount(self):
