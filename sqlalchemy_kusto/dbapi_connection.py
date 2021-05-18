@@ -1,9 +1,11 @@
+from typing import List
+
+from azure.kusto.data import KustoClient, KustoConnectionStringBuilder, ClientRequestProperties
 from sqlalchemy_kusto.dbapi_cursor import Cursor
 from sqlalchemy_kusto.utils import check_closed
-from azure.kusto.data import KustoClient, KustoConnectionStringBuilder, ClientRequestProperties
 
 
-class Connection(object):
+class Connection:
     """Connection to Kusto cluster."""
 
     def __init__(
@@ -17,7 +19,7 @@ class Connection(object):
         azure_ad_tenant_id: str = None,
     ):
         self.closed = False
-        self.cursors = []
+        self.cursors: List[Cursor] = []
 
         kcsb = self.get_connection_string_builder(
             azure_ad_client_id, azure_ad_client_secret, azure_ad_tenant_id, cluster, msi, user_msi
@@ -37,13 +39,12 @@ class Connection(object):
                 cluster, client_id=user_msi
             )
         # Service Principal auth
-        else:
-            return KustoConnectionStringBuilder.with_aad_application_key_authentication(
-                connection_string=cluster,
-                aad_app_id=azure_ad_client_id,
-                app_key=azure_ad_client_secret,
-                authority_id=azure_ad_tenant_id,
-            )
+        return KustoConnectionStringBuilder.with_aad_application_key_authentication(
+            connection_string=cluster,
+            aad_app_id=azure_ad_client_id,
+            app_key=azure_ad_client_secret,
+            authority_id=azure_ad_tenant_id,
+        )
 
     @check_closed
     def close(self):
@@ -59,7 +60,6 @@ class Connection(object):
 
         Not supported.
         """
-        pass
 
     @check_closed
     def cursor(self):
