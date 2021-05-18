@@ -1,2 +1,2 @@
 azure-kusto-data==2.1.1
-sqlalchemy==1.4.9
+sqlalchemy==1.4.15
