@@ -1,4 +1,5 @@
-from typing import List, Any
+from types import ModuleType
+from typing import List, Any, Dict, Optional
 from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integer, Float
 from sqlalchemy.engine import default, Connection
 from sqlalchemy.sql import compiler
@@ -42,7 +43,7 @@ class KustoIdentifierPreparer(compiler.IdentifierPreparer):
 
 
 class KustoCompiler(compiler.SQLCompiler):
-    def get_select_precolumns(self, select, **kw):
+    def get_select_precolumns(self, select, **kw) -> str:
         """Kusto puts TOP, it's version of LIMIT here"""
         # sqlalchemy.sql.selectable.Select
         select_precolumns = super(KustoCompiler, self).get_select_precolumns(select, **kw)
@@ -100,7 +101,7 @@ class KustoDialect(default.DefaultDialect):
     }
 
     @classmethod
-    def dbapi(cls):  # pylint: disable=method-hidden
+    def dbapi(cls) -> ModuleType:  # pylint: disable=method-hidden
         return sqlalchemy_kusto
 
     def create_connect_args(self, url):
@@ -118,20 +119,22 @@ class KustoDialect(default.DefaultDialect):
 
         return [], kwargs
 
-    def get_schema_names(self, connection: Connection, **kwargs):  # pylint: disable=no-self-use
+    def get_schema_names(self, connection: Connection, **kwargs) -> List[str]:  # pylint: disable=no-self-use
         result = connection.execute(".show databases | project DatabaseName")
         return [row.DatabaseName for row in result]
 
-    def has_table(self, connection: Connection, table_name: str, schema: str = None, **kw):
+    def has_table(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw):
         return table_name in self.get_table_names(connection, schema)
 
-    def get_table_names(self, connection: Connection, schema=None, **kwargs) -> List[str]:
+    def get_table_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
         if schema:
             database_subquery = f'| where DatabaseName == "{schema}"'
         result = connection.execute(f".show tables {database_subquery} " f"| project TableName")
         return [row.TableName for row in result]
 
-    def get_columns(self, connection: Connection, table_name: str, schema: str = None, **kw):
+    def get_columns(
+        self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw
+    ) -> List[Dict[str, Any]]:
         query = f".show table {table_name}"
         result = connection.execute(query)
 
@@ -145,34 +148,34 @@ class KustoDialect(default.DefaultDialect):
             for row in result
         ]
 
-    def get_view_names(self, connection: Connection, schema: str = None, **kwargs):
+    def get_view_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
         result = connection.execute(".show materialized-views  | project Name")
         return [row.Name for row in result]
 
-    def get_table_options(
-        self, connection: Connection, table_name: str, schema: str = None, **kwargs  # pylint: disable=no-self-use
+    def get_table_options(  # pylint: disable=no-self-use
+        self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs
     ):
         return {}
 
-    def get_pk_constraint(self, connection: Connection, table_name: str, schema: str = None, **kwargs):
+    def get_pk_constraint(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
         return {"constrained_columns": [], "name": None}
 
     def get_foreign_keys(self, connection, table_name, schema=None, **kwargs):
         return []
 
-    def get_check_constraints(self, connection: Connection, table_name: str, schema: str = None, **kwargs):
+    def get_check_constraints(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
         return []
 
-    def get_table_comment(self, connection: Connection, table_name, schema=None, **kwargs):
+    def get_table_comment(self, connection: Connection, table_name, schema: Optional[str] = None, **kwargs):
         return {"text": ""}
 
-    def get_indexes(self, connection: Connection, table_name: str, schema: str = None, **kwargs):
+    def get_indexes(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
         return []
 
-    def get_unique_constraints(self, connection: Connection, table_name: str, schema: str = None, **kwargs):
+    def get_unique_constraints(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
         return []
 
-    def get_view_definition(self, connection: Connection, view_name: str, schema: str = None, **kwargs):
+    def get_view_definition(self, connection: Connection, view_name: str, schema: Optional[str] = None, **kwargs):
         pass  # pragma: no cover
 
     def _check_unicode_returns(self, connection: Connection, additional_tests: List[Any] = None):
