@@ -1,39 +1,37 @@
-import sqlalchemy_kusto
-from sqlalchemy import types
+from typing import List
+from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integer, Float
 from sqlalchemy.engine import default
 from sqlalchemy.sql import compiler
-from typing import List
+import sqlalchemy_kusto
 
 
 def parse_bool_argument(value: str) -> bool:
     if value in ("True", "true"):
         return True
-    elif value in ("False", "false"):
+    if value in ("False", "false"):
         return False
-    else:
-        raise ValueError(f"Expected boolean found {value}")
+    raise ValueError(f"Expected boolean found {value}")
 
 
 type_map = {
-    "boolean": types.Boolean,
-    "datetime": types.TIMESTAMP,
-    "datetime": types.DATE,
-    "dynamic": types.String,
-    "stringbuffer": types.String,
-    "guid": types.String,
-    "int": types.Integer,
-    "i32": types.Integer,
-    "long": types.BigInteger,
-    "i64": types.BigInteger,
-    "real": types.Float,
-    "string": types.String,
-    "timespan": types.String,
-    "decimal": types.Float,
-    "real": types.Float,
+    "boolean": Boolean,
+    "datetime": TIMESTAMP,
+    "date": DATE,
+    "dynamic": String,
+    "stringbuffer": String,
+    "guid": String,
+    "int": Integer,
+    "i32": Integer,
+    "long": BigInteger,
+    "i64": BigInteger,
+    "string": String,
+    "timespan": String,
+    "decimal": Float,
+    "real": Float,
 }
 
 
-class UniversalSet(object):
+class UniversalSet:
     def __contains__(self, item):
         return True
 
@@ -46,25 +44,27 @@ class KustoCompiler(compiler.SQLCompiler):
     def get_select_precolumns(self, select, **kw):
         """Kusto puts TOP, it's version of LIMIT here"""
         # sqlalchemy.sql.selectable.Select
-        s = super(KustoCompiler, self).get_select_precolumns(select, **kw)
+        select_precolumns = super(KustoCompiler, self).get_select_precolumns(select, **kw)
 
-        if select._limit_clause is not None:
+        if select._limit_clause is not None:  # pylint: disable=protected-access
             kw["literal_execute"] = True
-            s += "TOP %s " % self.process(select._limit_clause, **kw)
+            select_precolumns += "TOP %s " % self.process(
+                select._limit_clause, **kw   # pylint: disable=protected-access
+            )
 
-        return s
+        return select_precolumns
 
-    def _get_limit_or_fetch(self, select):
-        if select._fetch_clause is None:
-            return select._limit_clause
-        else:
-            return select._fetch_clause
-
-    def fetch_clause(self, cs, **kwargs):
-        return ""
-
-    def limit_clause(self, cs, **kwargs):
-        return ""
+    # def _get_limit_or_fetch(self, select):
+    #     if select._fetch_clause is None:
+    #         return select._limit_clause
+    #     else:
+    #         return select._fetch_clause
+    #
+    # def fetch_clause(self, cs, **kwargs):
+    #     return ""
+    #
+    # def limit_clause(self, cs, **kwargs):
+    #     return ""
 
 
 class KustoTypeCompiler(compiler.GenericTypeCompiler):
@@ -97,7 +97,7 @@ class KustoDialect(default.DefaultDialect):
     }
 
     @classmethod
-    def dbapi(cls):
+    def dbapi(cls):     # pylint: method-hidden
         return sqlalchemy_kusto
 
     def create_connect_args(self, url):
