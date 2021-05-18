@@ -1,7 +1,7 @@
 from types import ModuleType
-from typing import List, Any, Dict, Optional
+from typing import List, Any, Dict, Optional, Tuple
 from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integer, Float
-from sqlalchemy.engine import default, Connection
+from sqlalchemy.engine import default, Connection, URL
 from sqlalchemy.sql import compiler
 import sqlalchemy_kusto
 from sqlalchemy_kusto import OperationalError
@@ -92,7 +92,7 @@ class KustoDialect(default.DefaultDialect):
     description_encoding = None
     supports_native_boolean = True
     supports_simple_order_by_label = True
-    _map_parse_connection_parameters = {
+    _map_parse_connection_parameters: Dict[str, Any] = {
         "msi": parse_bool_argument,
         "azure_ad_client_id": str,
         "azure_ad_client_secret": str,
@@ -104,8 +104,8 @@ class KustoDialect(default.DefaultDialect):
     def dbapi(cls) -> ModuleType:  # pylint: disable=method-hidden
         return sqlalchemy_kusto
 
-    def create_connect_args(self, url):
-        kwargs = {
+    def create_connect_args(self, url: URL) -> Tuple[List[Any], Dict[str, Any]]:
+        kwargs: Dict[str, Any] = {
             "cluster": "https://" + url.host,
             "database": url.database,
         }
@@ -123,7 +123,7 @@ class KustoDialect(default.DefaultDialect):
         result = connection.execute(".show databases | project DatabaseName")
         return [row.DatabaseName for row in result]
 
-    def has_table(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw):
+    def has_table(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs) -> bool:
         return table_name in self.get_table_names(connection, schema)
 
     def get_table_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
@@ -133,7 +133,7 @@ class KustoDialect(default.DefaultDialect):
         return [row.TableName for row in result]
 
     def get_columns(
-        self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw
+        self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs
     ) -> List[Dict[str, Any]]:
         query = f".show table {table_name}"
         result = connection.execute(query)
@@ -166,10 +166,14 @@ class KustoDialect(default.DefaultDialect):
     def get_check_constraints(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
         return []
 
-    def get_table_comment(self, connection: Connection, table_name, schema: Optional[str] = None, **kwargs):
+    def get_table_comment(
+        self, connection: Connection, table_name, schema: Optional[str] = None, **kwargs
+    ) -> Dict[str, Any]:
         return {"text": ""}
 
-    def get_indexes(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
+    def get_indexes(
+        self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs
+    ) -> List[Dict[str, Any]]:
         return []
 
     def get_unique_constraints(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
@@ -178,10 +182,10 @@ class KustoDialect(default.DefaultDialect):
     def get_view_definition(self, connection: Connection, view_name: str, schema: Optional[str] = None, **kwargs):
         pass  # pragma: no cover
 
-    def _check_unicode_returns(self, connection: Connection, additional_tests: List[Any] = None):
+    def _check_unicode_returns(self, connection: Connection, additional_tests: List[Any] = None) -> bool:
         return True
 
-    def _check_unicode_description(self, connection: Connection):
+    def _check_unicode_description(self, connection: Connection) -> bool:
         return True
 
     def do_rollback(self, dbapi_connection: sqlalchemy_kusto.dbapi.Connection):
