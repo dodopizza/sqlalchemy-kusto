@@ -1,12 +1,10 @@
 from collections import namedtuple
-
+from typing import Optional
 from azure.kusto.data._models import KustoResultColumn
-
+from azure.kusto.data import KustoClient, ClientRequestProperties
+from azure.kusto.data.exceptions import KustoServiceError, KustoAuthenticationError
 from sqlalchemy_kusto import errors
 from sqlalchemy_kusto.utils import check_closed, check_result
-from azure.kusto.data import KustoClient, ClientRequestProperties
-from typing import Optional
-from azure.kusto.data.exceptions import KustoServiceError, KustoAuthenticationError
 
 
 CursorDescriptionRow = namedtuple(
@@ -15,7 +13,7 @@ CursorDescriptionRow = namedtuple(
 )
 
 
-class Cursor(object):
+class Cursor:
     """Connection cursor."""
 
     def __init__(
@@ -38,9 +36,7 @@ class Cursor(object):
     def rowcount(self):
         # consume the iterator
         results = list(self._results)
-        n = len(results)
-        # self._results = iter(results)
-        return n
+        return len(results)
 
     @check_closed
     def close(self):
@@ -82,8 +78,8 @@ class Cursor(object):
             item = self._results[self.current_item_index]
             self.current_item_index += 1
             return item
-        else:
-            return None
+
+        return None
 
     @check_result
     @check_closed
@@ -92,8 +88,8 @@ class Cursor(object):
             items = self._results[self.current_item_index : self.current_item_index + size]
             self.current_item_index += size
             return items
-        else:
-            return self._results
+
+        return self._results
 
     @check_result
     @check_closed
@@ -158,11 +154,13 @@ def escape(value):
 
     if value == "*":
         return value
-    elif isinstance(value, str):
+    if isinstance(value, str):
         return "'{}'".format(value.replace("'", "''"))
-    elif isinstance(value, bool):
+    if isinstance(value, bool):
         return "TRUE" if value else "FALSE"
-    elif isinstance(value, (int, float)):
+    if isinstance(value, (int, float)):
         return value
-    elif isinstance(value, (list, tuple)):
+    if isinstance(value, (list, tuple)):
         return ", ".join(escape(element) for element in value)
+
+    return value

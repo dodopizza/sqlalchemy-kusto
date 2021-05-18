@@ -29,7 +29,7 @@ __all__ = [
     "Warning",
 ]
 
-apilevel = "2.0"
+apilevel = "2.0"  # pylint: disable=invalid-name
 # Threads may share the module and connections
-threadsafety = 2
-paramstyle = "pyformat"
+threadsafety = 2  # pylint: disable=invalid-name
+paramstyle = "pyformat"  # pylint: disable=invalid-name
