@@ -116,11 +116,12 @@ class KustoDialect(default.DefaultDialect):
 
         return [], kwargs
 
+    # from sqlalchemy.engine import Connection
     def get_schema_names(self, connection, **kwargs):
         result = connection.execute(".show databases | project DatabaseName")
         return [row.DatabaseName for row in result]
 
-    def has_table(self, connection, table_name, schema=None):
+    def has_table(self, connection, table_name: str, schema=None):
         return table_name in self.get_table_names(connection, schema)
 
     def get_table_names(self, connection, schema=None, **kwargs) -> List[str]:

@@ -12,7 +12,6 @@ from sqlalchemy_kusto.errors import (
     Warning,
 )
 
-print("init sqlalchemy kusto=======================================")
 __all__ = [
     "connect",
     "apilevel",
