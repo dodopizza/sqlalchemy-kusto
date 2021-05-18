@@ -1,5 +1,7 @@
 from types import ModuleType
-from typing import List, Any, Dict, Optional
+from typing import List, Any, Dict, Optional, Tuple
+
+from sqlalchemy.engine.url import URL
 from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integer, Float
 from sqlalchemy.engine import default, Connection
 from sqlalchemy.sql import compiler
@@ -56,10 +58,10 @@ class KustoCompiler(compiler.SQLCompiler):
 
         return select_precolumns
 
-    def fetch_clause(self, cs, **kwargs):
+    def fetch_clause(self, select, **kw):   # pylint: disable=no-self-use
         return ""
 
-    def limit_clause(self, cs, **kwargs):
+    def limit_clause(self, select, **kw):
         return ""
 
 
@@ -98,8 +100,7 @@ class KustoDialect(default.DefaultDialect):
     def dbapi(cls) -> ModuleType:  # pylint: disable=method-hidden
         return sqlalchemy_kusto
 
-    def create_connect_args(self, url):
-        # def create_connect_args(self, url: URL) -> Tuple[List[Any], Dict[str, Any]]:
+    def create_connect_args(self, url: URL) -> Tuple[List[Any], Dict[str, Any]]:
         kwargs: Dict[str, Any] = {
             "cluster": "https://" + url.host,
             "database": url.database,
@@ -152,7 +153,7 @@ class KustoDialect(default.DefaultDialect):
     ):
         return {}
 
-    def get_pk_constraint(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
+    def get_pk_constraint(self, conn: Connection, table_name: str, schema: Optional[str] = None, **kw):
         return {"constrained_columns": [], "name": None}
 
     def get_foreign_keys(self, connection, table_name, schema=None, **kwargs):
