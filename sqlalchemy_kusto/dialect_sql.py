@@ -26,6 +26,8 @@ type_map = {
     "guid": String,
     "int": Integer,
     "i32": Integer,
+    "i16": Integer,
+    "i8": Integer,
     "long": BigInteger,
     "i64": BigInteger,
     "string": String,
