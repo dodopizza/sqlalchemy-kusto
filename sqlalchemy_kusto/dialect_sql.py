@@ -153,7 +153,7 @@ class KustoSqlDialect(default.DefaultDialect):
     ):
         return {}
 
-    def get_pk_constraint(self, conn: Connection, table_name: str, schema: Optional[str] = None, **kw):
+    def get_pk_constraint(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw):
         return {"constrained_columns": [], "name": None}
 
     def get_foreign_keys(self, connection, table_name, schema=None, **kwargs):
