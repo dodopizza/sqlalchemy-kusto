@@ -28,6 +28,8 @@ type_map = {
     "i32": Integer,
     "i16": Integer,
     "i8": Integer,
+    "r64": Float,
+    "r32": Float,
     "long": BigInteger,
     "i64": BigInteger,
     "string": String,
