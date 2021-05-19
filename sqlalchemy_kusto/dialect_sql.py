@@ -44,11 +44,11 @@ class KustoIdentifierPreparer(compiler.IdentifierPreparer):
     reserved_words = UniversalSet()
 
 
-class KustoCompiler(compiler.SQLCompiler):
+class KustoSqlCompiler(compiler.SQLCompiler):
     def get_select_precolumns(self, select, **kw) -> str:
         """Kusto puts TOP, it's version of LIMIT here"""
         # sqlalchemy.sql.selectable.Select
-        select_precolumns = super(KustoCompiler, self).get_select_precolumns(select, **kw)
+        select_precolumns = super(KustoSqlCompiler, self).get_select_precolumns(select, **kw)
 
         if select._limit_clause is not None:  # pylint: disable=protected-access
             kw["literal_execute"] = True
@@ -58,25 +58,25 @@ class KustoCompiler(compiler.SQLCompiler):
 
         return select_precolumns
 
-    def fetch_clause(self, select, **kw):   # pylint: disable=no-self-use
+    def fetch_clause(self, select, **kw):  # pylint: disable=no-self-use
         return ""
 
     def limit_clause(self, select, **kw):
         return ""
 
 
-class KustoTypeCompiler(compiler.GenericTypeCompiler):
+class KustoSqlTypeCompiler(compiler.GenericTypeCompiler):
     pass
 
 
-class KustoDialect(default.DefaultDialect):
+class KustoSqlDialect(default.DefaultDialect):
     """ See description sqlalchemy/engine/interfaces.py """
 
-    name = "kusto"
+    name = "kustosql"
     scheme = "http"
     driver = "rest"
-    statement_compiler = KustoCompiler
-    type_compiler = KustoTypeCompiler
+    statement_compiler = KustoSqlCompiler
+    type_compiler = KustoSqlTypeCompiler
     preparer = compiler.IdentifierPreparer
     supports_alter = False
     supports_pk_autoincrement = False
@@ -196,8 +196,8 @@ class KustoDialect(default.DefaultDialect):
             return False
 
 
-KustoHTTPDialect = KustoDialect
+KustoSqlHTTPDialect = KustoSqlDialect
 
 
-class KustoHTTPSDialect(KustoDialect):
+class KustoSqlHTTPSDialect(KustoSqlDialect):
     scheme = "https"

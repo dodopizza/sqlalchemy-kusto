@@ -1,6 +1,6 @@
 from test.conftest import (
     KUSTO_URL,
-    KUSTO_ALCHEMY_URL,
+    KUSTO_SQL_ALCHEMY_URL,
     DATABASE,
     AZURE_AD_CLIENT_ID,
     AZURE_AD_CLIENT_SECRET,
@@ -43,7 +43,7 @@ def test_kusto_client():
 
 def test_alchemy():
     engine = create_engine(
-        f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
+        f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
         f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
         f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
         f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
@@ -57,7 +57,7 @@ def test_alchemy():
 
 def test_alchemy_ping():
     engine = create_engine(
-        f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
+        f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
         f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
         f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
         f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
@@ -68,7 +68,7 @@ def test_alchemy_ping():
 
 def test_fetch_one():
     engine = create_engine(
-        f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
+        f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
         f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
         f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
         f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
@@ -84,7 +84,7 @@ def test_fetch_one():
 
 def test_fetch_many():
     engine = create_engine(
-        f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
+        f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
         f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
         f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
         f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
@@ -99,7 +99,7 @@ def test_fetch_many():
 
 def test_fetch_all():
     engine = create_engine(
-        f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
+        f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
         f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
         f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
         f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
@@ -113,7 +113,7 @@ def test_fetch_all():
 
 def test_ddl():
     engine = create_engine(
-        f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
+        f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
         f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
         f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
         f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
@@ -127,7 +127,7 @@ def test_ddl():
 
 def test_dialect_columns():
     engine = create_engine(
-        f"{KUSTO_ALCHEMY_URL}/{DATABASE}?"
+        f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
         f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
         f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
         f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"

@@ -1,7 +1,7 @@
 import os
 from setuptools import find_packages, setup
 
-VERSION = "0.0.9"
+VERSION = "0.0.11"
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 
 setup(
@@ -13,9 +13,12 @@ setup(
     zip_safe=False,
     entry_points={
         "sqlalchemy.dialects": [
-            "kusto = sqlalchemy_kusto.dialect:KustoHTTPDialect",
-            "kusto.http = sqlalchemy_kusto.dialect:KustoHTTPDialect",
-            "kusto.https = sqlalchemy_kusto.dialect:KustoHTTPSDialect",
+            "kustosql = sqlalchemy_kusto.dialect_sql:KustoSqlHTTPDialect",
+            "kustosql.http = sqlalchemy_kusto.dialect_sql:KustoSqlHTTPDialect",
+            "kustosql.https = sqlalchemy_kusto.dialect_sql:KustoSqlHTTPSDialect",
+            "kustokql = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPDialect",
+            "kustokql.http = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPDialect",
+            "kustokql.https = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPSDialect",
         ]
     },
     install_requires=["azure-kusto-data>=2.1.1", "sqlalchemy"],
