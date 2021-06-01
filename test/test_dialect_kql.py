@@ -10,17 +10,16 @@ import sqlalchemy as sa
 from sqlalchemy import create_engine, column
 from sqlalchemy.sql.selectable import TextAsFrom
 
+engine = create_engine(
+    f"{KUSTO_KQL_ALCHEMY_URL}/{DATABASE}?"
+    f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
+    f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
+    f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
+)
+
 
 def test_compiler_with_projection():
     statement_str = "MaterialTransferStream | take 10"
-
-    engine = create_engine(
-        f"{KUSTO_KQL_ALCHEMY_URL}/{DATABASE}?"
-        f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
-        f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
-        f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
-    )
-
     stmt = TextAsFrom(sa.text(statement_str), []).alias("virtual_table")
     query = sa.select(
         from_obj=stmt,
@@ -46,14 +45,6 @@ def test_compiler_with_projection():
 
 def test_compiler_with_asterisk():
     statement_str = "MaterialTransferStream | take 10"
-
-    engine = create_engine(
-        f"{KUSTO_KQL_ALCHEMY_URL}/{DATABASE}?"
-        f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
-        f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
-        f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
-    )
-
     stmt = TextAsFrom(sa.text(statement_str), []).alias("virtual_table")
     query = sa.select(
         "*",
