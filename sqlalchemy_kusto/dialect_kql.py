@@ -95,11 +95,12 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         columns = select.inner_columns
         if columns is not None:
             column_labels = []
-            for column in columns:
+            for column in [c for c in columns if c.name != "*"]:
                 column_real_name = column.element.name if hasattr(column, "element") else column.name
                 column_labels.append(f"{column.name} = {column_real_name}")
 
-            return f"| project {', '.join(column_labels)}"
+            if column_labels:
+                return f"| project {', '.join(column_labels)}"
         return ""
 
 
