@@ -81,15 +81,19 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             raise NotSupportedError("Only 1 from is supported in kql compiler")
         from_object: selectable.Alias = select.froms[0]
 
-        result = f"let {from_object.name} = ({from_object.element});\n" f"{from_object.name}"
+        compiled_query_lines = []
+        compiled_query_lines.append(f"let {from_object.name} = ({from_object.element});")
+        compiled_query_lines.append(from_object.name)
+
         columns: ImmutableColumnCollection = select.columns
 
-        if columns is not None and not columns.contains_column("*"):
-            result += f"\n| project {','.join([ (c.name + ' = ' + c.key) for c in columns.values()])}"
+        if columns is not None and "*" not in columns:
+            compiled_query_lines.append(f"| project {','.join([ (c.name + ' = ' + c.key) for c in columns.values()])}")
+
         if select._limit_clause is not None:  # pylint: disable=protected-access
-            result += f"\n| take {self.process(select._limit_clause)}"  # pylint: disable=protected-access
-        print(result)
-        return result
+            compiled_query_lines.append(f"| take {self.process(select._limit_clause)}")  # pylint: disable=protected-access
+
+        return "\n".join(compiled_query_lines)
 
     def fetch_clause(self, select, **kw):  # pylint: disable=no-self-use
         return ""
