@@ -143,17 +143,13 @@ class KustoSqlDialect(default.DefaultDialect):
             | where TableName == "{table_name}"
         """
         table_search_result = connection.execute(table_search_query)
+        entity_type = "table" if table_search_result.rowcount == 1 else "materialized-view"
 
-        if table_search_result.rowcount == 1:
-            # table
-            query = f".show table {table_name} schema as json"
-        else:
-            # materialized view
-            query = f".show materialized-view {table_name} schema as json"
-
+        query = f".show {entity_type} {table_name} schema as json"
         query_result = connection.execute(query)
         rows = list(query_result)
         entity_schema = json.loads(rows[0].Schema)
+
         return [
             {
                 "name": column["Name"],
