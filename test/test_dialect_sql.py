@@ -5,7 +5,7 @@ from test.conftest import (
     AZURE_AD_CLIENT_SECRET,
     AZURE_AD_TENANT_ID,
 )
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, MetaData, Table, Column, String
 
 engine = create_engine(
     f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
@@ -62,3 +62,20 @@ def test_fetch_all():
     print("\n")
     print("\n".join([str(r) for r in result.fetchall()]))
     assert engine is not None
+
+
+def test_limit():
+    metadata = MetaData()
+    stream = Table(
+        "MaterialTransferStream",
+        metadata,
+        Column("MaterialTypeId", String),
+        Column("UnitId", String),
+    )
+
+    query = stream.select().limit(5)
+
+    engine.connect()
+    result = engine.execute(query)
+    result_length = len(result.fetchall())
+    assert result_length == 5

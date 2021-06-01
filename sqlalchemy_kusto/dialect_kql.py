@@ -1,3 +1,4 @@
+import json
 from types import ModuleType
 from typing import List, Any, Dict, Optional, Tuple
 
@@ -163,17 +164,26 @@ class KustoKqlDialect(default.DefaultDialect):
     def get_columns(
         self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs
     ) -> List[Dict[str, Any]]:
-        query = f".show table {table_name}"
-        result = connection.execute(query)
+        table_search_query = f"""
+            .show tables
+            | where TableName == "{table_name}"
+        """
+        table_search_result = connection.execute(table_search_query)
+        entity_type = "table" if table_search_result.rowcount == 1 else "materialized-view"
+
+        query = f".show {entity_type} {table_name} schema as json"
+        query_result = connection.execute(query)
+        rows = list(query_result)
+        entity_schema = json.loads(rows[0].Schema)
 
         return [
             {
-                "name": row.AttributeName,
-                "type": csl_to_sql_types[row.AttributeType.lower()],
+                "name": column["Name"],
+                "type": csl_to_sql_types[column["CslType"].lower()],
                 "nullable": True,
                 "default": "",
             }
-            for row in result
+            for column in entity_schema["OrderedColumns"]
         ]
 
     def get_view_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
