@@ -30,7 +30,7 @@ def test_compiler():
     query_expected = [
         "let virtual_table = (MaterialTransferStream | take 10);",
         "virtual_table",
-        "| project uId = uId",
+        "| project uId = UnitId",
         "| take %(param_1)s"]
 
     assert query_compiled == "\n".join(query_expected)
