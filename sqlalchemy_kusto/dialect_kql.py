@@ -18,7 +18,8 @@ def parse_bool_argument(value: str) -> bool:
     raise ValueError(f"Expected boolean found {value}")
 
 
-type_map = {
+csl_to_sql_types = {
+    "bool": Boolean,
     "boolean": Boolean,
     "datetime": TIMESTAMP,
     "date": DATE,
@@ -65,37 +66,27 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     def visit_select(
         self,
-        select_stmt: selectable.Select,
-        asfrom: bool = False,
+        select: selectable.Select,
+        asfrom=False,
+        parens=True,
         fromhints=None,
         compound_index: int = 0,
+        nested_join_translation=False,
         select_wraps_for=None,
-        lateral: bool = False,
-        from_linter=None,
+        lateral=False,
         **kwargs,
     ):
-        # base_result = super().visit_select(
-        #     select,
-        #     asfrom,
-        #     parens,
-        #     fromhints,
-        #     compound_index,
-        #     nested_join_translation,
-        #     select_wraps_for,
-        #     lateral,
-        #     **kwargs,
-        # )
-        if len(select_stmt.froms) != 1:
+        if len(select.froms) != 1:
             raise NotSupportedError("Only 1 from is supported in kql compiler")
-        from_object: selectable.Alias = select_stmt.froms[0]
+        from_object: selectable.Alias = select.froms[0]
 
         result = f"let {from_object.name} = ({from_object.element});\n" f"{from_object.name}"
-        columns: ImmutableColumnCollection = select_stmt.columns
+        columns: ImmutableColumnCollection = select.columns
 
         if columns is not None and not columns.contains_column("*"):
             result += f"\n| project {','.join([ (c.name + ' = ' + c.key) for c in columns.values()])}"
-        if select_stmt._limit_clause is not None:    # pylint: disable=protected-access
-            result += f"\n| take {self.process(select_stmt._limit_clause)}"  # pylint: disable=protected-access
+        if select._limit_clause is not None:    # pylint: disable=protected-access
+            result += f"\n| take {self.process(select._limit_clause)}"  # pylint: disable=protected-access
         print(result)
         return result
 
@@ -178,7 +169,7 @@ class KustoKqlDialect(default.DefaultDialect):
         return [
             {
                 "name": row.AttributeName,
-                "type": type_map[row.AttributeType.lower()],
+                "type": csl_to_sql_types[row.AttributeType.lower()],
                 "nullable": True,
                 "default": "",
             }
@@ -194,7 +185,7 @@ class KustoKqlDialect(default.DefaultDialect):
     ):
         return {}
 
-    def get_pk_constraint(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw):
+    def get_pk_constraint(self, conn: Connection, table_name: str, schema: Optional[str] = None, **kw):
         return {"constrained_columns": [], "name": None}
 
     def get_foreign_keys(self, connection, table_name, schema=None, **kwargs):
