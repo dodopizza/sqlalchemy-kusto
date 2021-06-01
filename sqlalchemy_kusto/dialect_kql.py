@@ -85,7 +85,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
         if columns is not None and not columns.contains_column("*"):
             result += f"\n| project {','.join([ (c.name + ' = ' + c.key) for c in columns.values()])}"
-        if select._limit_clause is not None:    # pylint: disable=protected-access
+        if select._limit_clause is not None:  # pylint: disable=protected-access
             result += f"\n| take {self.process(select._limit_clause)}"  # pylint: disable=protected-access
         print(result)
         return result
