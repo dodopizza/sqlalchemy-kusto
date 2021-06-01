@@ -16,7 +16,7 @@ pylint:
     - too-few-public-methods
     - too-many-arguments
     - too-many-instance-attributes
-    - protected-access
+    - protected-access                  # Disabled during early stage of development
     - abstract-method                   # Disabled during early stage of development
     - unused-argument                   # Disabled during early stage of development
 

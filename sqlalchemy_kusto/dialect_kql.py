@@ -2,11 +2,11 @@ import json
 from types import ModuleType
 from typing import List, Any, Dict, Optional, Tuple
 
-from sqlalchemy.engine.url import URL
-from sqlalchemy.sql.base import ImmutableColumnCollection
-from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integer, Float
 from sqlalchemy.engine import default, Connection
+from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import compiler, selectable
+from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integer, Float
+
 import sqlalchemy_kusto
 from sqlalchemy_kusto import OperationalError, NotSupportedError
 
@@ -52,19 +52,6 @@ class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
 
 
 class KustoKqlCompiler(compiler.SQLCompiler):
-    def get_select_precolumns(self, select, **kw) -> str:
-        """Kusto puts TOP, it's version of LIMIT here"""
-        # sqlalchemy.sql.selectable.Select
-        select_precolumns = super(KustoKqlCompiler, self).get_select_precolumns(select, **kw)
-
-        if select._limit_clause is not None:  # pylint: disable=protected-access
-            kw["literal_execute"] = True
-            select_precolumns += "TOP %s " % self.process(
-                select._limit_clause, **kw  # pylint: disable=protected-access
-            )
-
-        return select_precolumns
-
     def visit_select(
         self,
         select: selectable.Select,
@@ -85,13 +72,14 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         compiled_query_lines.append(f"let {from_object.name} = ({from_object.element});")
         compiled_query_lines.append(from_object.name)
 
-        columns: ImmutableColumnCollection = select.columns
-
-        if columns is not None and "*" not in columns:
-            compiled_query_lines.append(f"| project {','.join([ (c.name + ' = ' + c.key) for c in columns.values()])}")
+        projections = self._get_projection(select)
+        if projections:
+            compiled_query_lines.append(projections)
 
         if select._limit_clause is not None:  # pylint: disable=protected-access
-            compiled_query_lines.append(f"| take {self.process(select._limit_clause)}")  # pylint: disable=protected-access
+            compiled_query_lines.append(
+                f"| take {self.process(select._limit_clause)}"
+            )  # pylint: disable=protected-access
 
         return "\n".join(compiled_query_lines)
 
@@ -99,6 +87,19 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return ""
 
     def limit_clause(self, select, **kw):
+        return ""
+
+    @staticmethod
+    def _get_projection(select: selectable.Select) -> str:
+        # TODO: Migrate to select.exported_columns
+        columns = select.inner_columns
+        if columns is not None:
+            column_labels = []
+            for column in columns:
+                column_real_name = column.element.name if hasattr(column, "element") else column.name
+                column_labels.append(f"{column.name} = {column_real_name}")
+
+            return f"| project {', '.join(column_labels)}"
         return ""
 
 

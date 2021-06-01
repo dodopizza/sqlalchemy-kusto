@@ -22,7 +22,14 @@ def test_compiler():
     )
 
     stmt = TextAsFrom(sa.text(statement_str), []).alias("virtual_table")
-    query = sa.select(from_obj=stmt, columns=[column("UnitId").label("uId")])
+    query = sa.select(
+        from_obj=stmt,
+        columns=[
+            column("UnitId").label("uId"),
+            column("MaterialTypeId").label("mttId"),
+            column("Type"),
+        ],
+    )
     query = query.select_from(stmt)
     query = query.limit(10)
 
@@ -30,7 +37,8 @@ def test_compiler():
     query_expected = [
         "let virtual_table = (MaterialTransferStream | take 10);",
         "virtual_table",
-        "| project uId = UnitId",
-        "| take %(param_1)s"]
+        "| project uId = UnitId, mttId = MaterialTypeId, Type = Type",
+        "| take %(param_1)s",
+    ]
 
     assert query_compiled == "\n".join(query_expected)
