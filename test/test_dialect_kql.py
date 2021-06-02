@@ -52,7 +52,7 @@ def test_compiler_with_projection():
     query_expected = [
         "let virtual_table = (MaterialTransferStream | take 10);",
         "virtual_table",
-        "| project uId = UnitId, mttId = MaterialTypeId, Type = Type",
+        "| project uId = UnitId, mttId = MaterialTypeId, Type",
         "| take %(param_1)s",
     ]
 

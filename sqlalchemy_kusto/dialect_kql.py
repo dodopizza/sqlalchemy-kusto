@@ -100,8 +100,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         if columns is not None:
             column_labels = []
             for column in [c for c in columns if c.name != "*"]:
-                column_real_name = column.element.name if hasattr(column, "element") else column.name
-                column_labels.append(f"{column.name} = {column_real_name}")
+                if hasattr(column, "element"):
+                    column_labels.append(f"{column.name} = {column.element.name}")
+                else:
+                    column_labels.append(column.name)
 
             if column_labels:
                 return f"| project {', '.join(column_labels)}"
