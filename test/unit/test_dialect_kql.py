@@ -31,7 +31,7 @@ def test_compiler_with_projection():
     assert query_compiled == "\n".join(query_expected)
 
 
-def test_compiler_with_asterisk():
+def test_compiler_with_star():
     statement_str = "MaterialTransferStream | take 10"
     stmt = TextAsFrom(sa.text(statement_str), []).alias("virtual_table")
     query = sa.select(
