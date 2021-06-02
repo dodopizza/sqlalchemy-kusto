@@ -81,3 +81,29 @@ def test_use_table():
         "| take %(param_1)s",
     ]
     assert query_compiled == "\n".join(query_expected)
+
+def test_quotes():
+    metadata = MetaData()
+    stream = Table(
+        '"MyTable"',
+        metadata,
+        Column("Field1", String),
+        Column("Field2", String),
+    )
+
+    query = stream.select().limit(5)
+    # engine.dialect.identifier_preparer.initial_quote = '['
+    # engine.dialect.identifier_preparer.final_quote = ']'
+
+    quote = engine.dialect.identifier_preparer.quote
+    full_table_name = quote("MyTable")
+    print(full_table_name)
+    # query_compiled = str(query.compile(engine))
+    #
+    # print(query_compiled)
+    # query_expected = [
+    #     "MyTable",
+    #     "| project Field1, Field2",
+    #     "| take %(param_1)s",
+    # ]
+    # assert query_compiled == "\n".join(query_expected)

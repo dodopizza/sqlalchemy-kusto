@@ -52,7 +52,7 @@ class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
 
     def __init__(self, dialect, **kw):
         super(KustoKqlIdentifierPreparer, self).__init__(
-            dialect, initial_quote="", escape_quote="", **kw
+            dialect, initial_quote="", final_quote="", **kw
         )
 
 
