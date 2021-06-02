@@ -88,8 +88,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             compiled_query_lines.append(projections)
 
         if select._limit_clause is not None:  # pylint: disable=protected-access
+            kwargs["literal_execute"] = True
             compiled_query_lines.append(
-                f"| take {self.process(select._limit_clause)}"
+                f"| take {self.process(select._limit_clause, **kwargs)}"
             )  # pylint: disable=protected-access
 
         return "\n".join(compiled_query_lines)
