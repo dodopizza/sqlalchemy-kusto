@@ -50,6 +50,11 @@ class UniversalSet:
 class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
     reserved_words = UniversalSet()
 
+    def __init__(self, dialect, **kw):
+        super(KustoKqlIdentifierPreparer, self).__init__(
+            dialect, initial_quote="", escape_quote="", **kw
+        )
+
 
 class KustoKqlCompiler(compiler.SQLCompiler):
     def visit_select(
@@ -124,7 +129,7 @@ class KustoKqlDialect(default.DefaultDialect):
     driver = "rest"
     statement_compiler = KustoKqlCompiler
     type_compiler = KustoKqlTypeCompiler
-    preparer = compiler.IdentifierPreparer
+    preparer = KustoKqlIdentifierPreparer
     supports_alter = False
     supports_pk_autoincrement = False
     supports_default_values = True
