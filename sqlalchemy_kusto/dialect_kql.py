@@ -73,6 +73,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         if hasattr(from_object, "element"):
             compiled_query_lines.append(f"let {from_object.name} = ({from_object.element});")
             compiled_query_lines.append(from_object.name)
+        elif hasattr(from_object, "name"):
+            compiled_query_lines.append(from_object.name)
         else:
             compiled_query_lines.append(from_object.text)
 
