@@ -88,7 +88,7 @@ def test_select_from_text():
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
     query_expected = [
         "MyTable",
-        "| project Field1 = Field1, Field2 = Field2",
+        "| project Field1, Field2",
         "| take %(param_1)s",
     ]
 
