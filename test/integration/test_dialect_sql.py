@@ -15,28 +15,6 @@ engine = create_engine(
 )
 
 
-def test_ping():
-    engine.connect()
-    result = engine.dialect.do_ping(engine.raw_connection())
-    assert result is True
-
-
-def test_ddl():
-    engine.connect()
-    result = engine.execute(".show tables")
-    print("\n")
-    print("\n".join([str(r) for r in result.fetchall()]))
-    assert result is not None
-
-
-def test_get_columns():
-    conn = engine.connect()
-    columns_result = engine.dialect.get_columns(conn, "_temp__ordercomposition_extended_with_combo_1620690454")
-    print("\n")
-    print("\n".join([str(r) for r in columns_result]))
-    assert columns_result is not None
-
-
 def test_fetch_one():
     engine.connect()
     result = engine.execute("select top 2 * from MaterialTransferStream")
