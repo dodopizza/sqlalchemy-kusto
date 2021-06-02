@@ -18,6 +18,22 @@ engine = create_engine(
 )
 
 
+def test_ddl():
+    engine.connect()
+    result = engine.execute(".show tables")
+    print("\n")
+    print("\n".join([str(r) for r in result.fetchall()]))
+    assert result is not None
+
+
+def test_get_columns():
+    conn = engine.connect()
+    columns_result = engine.dialect.get_columns(conn, "_temp__ordercomposition_extended_with_combo_1620690454")
+    print("\n")
+    print("\n".join([str(r) for r in columns_result]))
+    assert columns_result is not None
+
+
 def test_compiler_with_projection():
     statement_str = "MaterialTransferStream | take 10"
     stmt = TextAsFrom(sa.text(statement_str), []).alias("virtual_table")
@@ -36,7 +52,7 @@ def test_compiler_with_projection():
     query_expected = [
         "let virtual_table = (MaterialTransferStream | take 10);",
         "virtual_table",
-        "| project uId = UnitId, mttId = MaterialTypeId, Type = Type",
+        "| project uId = UnitId, mttId = MaterialTypeId, Type",
         "| take %(param_1)s",
     ]
 
