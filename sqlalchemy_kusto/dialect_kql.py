@@ -66,11 +66,15 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     ):
         if len(select.froms) != 1:
             raise NotSupportedError("Only 1 from is supported in kql compiler")
-        from_object: selectable.Alias = select.froms[0]
 
         compiled_query_lines = []
-        compiled_query_lines.append(f"let {from_object.name} = ({from_object.element});")
-        compiled_query_lines.append(from_object.name)
+
+        from_object = select.froms[0]
+        if hasattr(from_object, "element"):
+            compiled_query_lines.append(f"let {from_object.name} = ({from_object.element});")
+            compiled_query_lines.append(from_object.name)
+        else:
+            compiled_query_lines.append(from_object.text)
 
         projections = self._get_projection(select)
         if projections:
