@@ -57,7 +57,7 @@ def test_select_from_text():
     query_expected = [
         "MyTable",
         "| project Field1, Field2",
-        "| take %(param_1)s",
+        "| take 100",
     ]
 
     assert query_compiled == "\n".join(query_expected)
@@ -107,3 +107,15 @@ def test_quotes():
     #     "| take %(param_1)s",
     # ]
     # assert query_compiled == "\n".join(query_expected)
+
+def test_limit():
+    sql = "MyTable"
+    limit = 5
+    query = (
+        select("*")
+        .select_from(TextAsFrom(text(sql), ["*"]).alias("inner_qry"))
+        .limit(limit)
+    )
+
+    query_compiled = query.compile(engine, compile_kwargs={"literal_binds": True})
+    print(query_compiled)

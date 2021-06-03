@@ -18,7 +18,7 @@ engine = create_engine(
 def test_limit():
     metadata = MetaData()
     stream = Table(
-        '"MaterialTransferStream"',
+        'MaterialTransferStream',
         metadata,
         Column("MaterialTypeId", String),
         Column("UnitId", String),

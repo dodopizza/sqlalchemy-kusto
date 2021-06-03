@@ -76,7 +76,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
         from_object = select.froms[0]
         if hasattr(from_object, "element"):
-            compiled_query_lines.append(f"let {from_object.name} = ({from_object.element});")
+            compiled_query_lines.append(f"let {from_object.name} = ({self._getMostInnerElement(from_object.element)});")
             compiled_query_lines.append(from_object.name)
         elif hasattr(from_object, "name"):
             compiled_query_lines.append(from_object.name)
@@ -94,6 +94,14 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             )  # pylint: disable=protected-access
 
         return "\n".join(compiled_query_lines)
+
+    def _getMostInnerElement(self, clause):
+        innerElement = getattr(clause, "element", None)
+        if innerElement is not None:
+            return self._getMostInnerElement(innerElement)
+        else:
+            return clause
+
 
     def fetch_clause(self, select, **kw):  # pylint: disable=no-self-use
         return ""
