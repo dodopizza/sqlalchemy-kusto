@@ -1,4 +1,5 @@
 import json
+import logging
 from types import ModuleType
 from typing import List, Any, Dict, Optional, Tuple
 
@@ -10,6 +11,7 @@ from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integ
 import sqlalchemy_kusto
 from sqlalchemy_kusto import OperationalError, NotSupportedError
 
+logger = logging.getLogger(__name__)
 
 def parse_bool_argument(value: str) -> bool:
     if value in ("True", "true"):
@@ -69,6 +71,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         lateral=False,
         **kwargs,
     ):
+        logger.debug(f"Incoming query {select}")
+
         if len(select.froms) != 1:
             raise NotSupportedError("Only 1 from is supported in kql compiler")
 
