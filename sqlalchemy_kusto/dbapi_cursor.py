@@ -54,6 +54,7 @@ class Cursor:
         else:
             properties.set_option("query_language", "kql")
 
+        logger.debug(f"Operation to dataexplorer: {operation}")
         query = apply_parameters(operation, parameters)
         logger.debug(f"Query to dataexplorer: {query}")
         query = query.rstrip()
