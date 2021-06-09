@@ -1,3 +1,4 @@
+import logging
 from collections import namedtuple
 from typing import Optional
 from azure.kusto.data._models import KustoResultColumn
@@ -6,6 +7,7 @@ from azure.kusto.data.exceptions import KustoServiceError, KustoAuthenticationEr
 from sqlalchemy_kusto import errors
 from sqlalchemy_kusto.utils import check_closed, check_result
 
+logger = logging.getLogger(__name__)
 
 CursorDescriptionRow = namedtuple(
     "CursorDescriptionRow",
@@ -53,6 +55,8 @@ class Cursor:
             properties.set_option("query_language", "kql")
 
         query = apply_parameters(operation, parameters)
+        logger.debug(f"Query to dataexplorer: {query}")
+        query = query.rstrip()
         try:
             server_response = self.kusto_client.execute(self.database, query, properties)
         except KustoServiceError as kusto_error:

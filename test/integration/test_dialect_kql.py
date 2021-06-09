@@ -1,3 +1,7 @@
+from select import select
+
+from sqlalchemy.sql.selectable import TextAsFrom
+
 from test.conftest import (
     KUSTO_KQL_ALCHEMY_URL,
     DATABASE,
@@ -5,7 +9,7 @@ from test.conftest import (
     AZURE_AD_CLIENT_SECRET,
     AZURE_AD_TENANT_ID,
 )
-from sqlalchemy import create_engine, MetaData, Table, Column, String
+from sqlalchemy import create_engine, column, text, select, MetaData, Table, Column, String, func, literal_column
 
 engine = create_engine(
     f"{KUSTO_KQL_ALCHEMY_URL}/{DATABASE}?"
@@ -33,3 +37,21 @@ def test_limit():
     result = engine.execute(query)
     result_length = len(result.fetchall())
     assert result_length == 5
+
+def test_select_count_2():
+    sql = "MaterialTransferStream"
+
+    column_count = literal_column("count(*)").label("count")
+    query = select([column_count]) \
+        .select_from(TextAsFrom(text(sql), ["*"]).alias("inner_qry")) \
+        .where(text("Field1 > 1")) \
+        .where(text("Field2 < 2")) \
+        .limit(5)
+
+    print(query)
+
+    query_compiled = query.compile(engine, compile_kwargs={"literal_binds": True})
+    print(query_compiled)
+
+    engine.connect()
+    result = engine.execute(query)
