@@ -103,7 +103,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
         compiled_query_lines = list(filter(None, compiled_query_lines))
 
-        compiled_query = " ".join(compiled_query_lines)
+        compiled_query = "\n".join(compiled_query_lines) + ";"
         logger.debug(f"Compiled query: {compiled_query}")
         return compiled_query
 
