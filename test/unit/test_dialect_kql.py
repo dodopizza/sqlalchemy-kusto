@@ -1,5 +1,5 @@
 import sqlalchemy as sa
-from sqlalchemy import create_engine, column, text, select, MetaData, Table, Column, String
+from sqlalchemy import create_engine, column, text, select, MetaData, Table, Column, String, func
 from sqlalchemy.sql.selectable import TextAsFrom
 
 
@@ -117,5 +117,45 @@ def test_limit():
         .limit(limit)
     )
 
+    query_compiled = query.compile(engine, compile_kwargs={"literal_binds": True})
+    print(query_compiled)
+
+
+def test_select_count():
+    sql = "MyTable"
+    limit = 5
+    query = (
+        select("*")
+        # select("count(*) AS count")
+        .select_from(TextAsFrom(text(sql), ["*"]).alias("inner_qry"))
+        .where("Field1 > 1")
+        .where("Field1 < 2")
+        .limit(limit)
+    )
+    print(query)
+    # query_compiled = query.compile(engine, compile_kwargs={"literal_binds": True})
+    # print(query_compiled)
+
+# SELECT count(*) AS count
+# FROM (MaterialTransferStream) AS expr_qry
+# WHERE "EffectiveDateTime" >= datetime(2021-06-02T00:00:00)) AND "EffectiveDateTime" < datetime(2021-06-09T00:00:00)) ORDER BY count DESC
+#  LIMIT :param_1
+
+def test_select_count_2():
+    sql = "MyTable"
+    metadata = MetaData()
+    table = Table(
+        'MyTable',
+        metadata,
+        Column("Field1", String),
+        Column("Field2", String),
+    )
+
+    query = select([func.count().label("count")]) \
+        .select_from(TextAsFrom(text(sql), ["*"]).alias("inner_qry")) \
+        .where(text("Field1 > 1")) \
+        .where(text("Field2 < 2")) \
+        .limit(5)
+    print(query)
     query_compiled = query.compile(engine, compile_kwargs={"literal_binds": True})
     print(query_compiled)
