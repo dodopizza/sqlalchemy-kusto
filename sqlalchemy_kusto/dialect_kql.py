@@ -85,8 +85,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
         from_object = select.froms[0]
         if hasattr(from_object, "element"):
-            compiled_query_lines.append(f"let {from_object.name} = ({self._getMostInnerElement(from_object.element)});")
-            compiled_query_lines.append(from_object.name)
+            compiled_query_lines.append(f"({self._getMostInnerElement(from_object.element)})")
         elif hasattr(from_object, "name"):
             compiled_query_lines.append(from_object.name)
         else:
