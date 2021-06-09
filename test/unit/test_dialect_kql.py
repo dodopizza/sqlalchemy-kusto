@@ -143,16 +143,18 @@ def test_select_count():
 
 
 def test_select_count_2():
-    sql = "MyTable"
-
+    kql_query = "MyTable"
     column_count = literal_column("count(*)").label("count")
-    query = select([column_count]) \
-        .select_from(TextAsFrom(text(sql), ["*"]).alias("inner_qry")) \
-        .where(text("Field1 > 1")) \
-        .where(text("Field2 < 2")) \
+    query = (
+        select([column_count])
+        .select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
+        .where(text('"Field1" > 1'))
+        .where(text('"Field2" < 2'))
+        .order_by(text("count DESC"))
         .limit(5)
+    )
 
-    print(query)
+    print(f"\n\nOriginal query:\n{query}")
 
     query_compiled = query.compile(engine, compile_kwargs={"literal_binds": True})
-    print(query_compiled)
+    print(f"\n\nCompiled query:\n{query_compiled}")

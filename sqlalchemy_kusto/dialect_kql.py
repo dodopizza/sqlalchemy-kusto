@@ -3,6 +3,7 @@ import logging
 from types import ModuleType
 from typing import List, Any, Dict, Optional, Tuple
 
+from sqlalchemy import Column
 from sqlalchemy.engine import default, Connection
 from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import compiler, selectable
@@ -43,6 +44,9 @@ csl_to_sql_types = {
     "real": Float,
 }
 
+aggregates_sql_to_kql = {
+    "count(*)": "count()",
+}
 
 class UniversalSet:
     def __contains__(self, item):
@@ -88,7 +92,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         else:
             compiled_query_lines.append(from_object.text)
 
-        projections = self._get_projection(select)
+        projections = self._get_projection_or_summarize(select)
         if projections:
             compiled_query_lines.append(projections)
 
@@ -99,7 +103,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             )  # pylint: disable=protected-access
 
         compiled_query_lines = list(filter(None, compiled_query_lines))
-        return "\n".join(compiled_query_lines)
+        return " ".join(compiled_query_lines)
 
     def _getMostInnerElement(self, clause):
         innerElement = getattr(clause, "element", None)
@@ -115,21 +119,34 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def limit_clause(self, select, **kw):
         return ""
 
-    @staticmethod
-    def _get_projection(select: selectable.Select) -> str:
+    def _get_projection_or_summarize(self, select: selectable.Select) -> str:
         # TODO: Migrate to select.exported_columns
         columns = select.inner_columns
         if columns is not None:
             column_labels = []
+            is_summarize = False
             for column in [c for c in columns if c.name != "*"]:
-                if hasattr(column, "element"):
-                    column_labels.append(f"{column.name} = {column.element.name}")
+                column_name, column_alias = self._extract_column_name_and_alias(column)
+
+                if column_name in aggregates_sql_to_kql:
+                    is_summarize = True
+                    column_labels.append(self._build_column_projection(aggregates_sql_to_kql[column_name], column_alias))
                 else:
-                    column_labels.append(column.name)
+                    column_labels.append(self._build_column_projection(column_name, column_alias))
 
             if column_labels:
-                return f"| project {', '.join(column_labels)}"
+                projection_type = "summarize" if is_summarize else "project"
+                return f"| {projection_type} {', '.join(column_labels)}"
         return ""
+
+    def _extract_column_name_and_alias(self, column: Column) -> Tuple[str, Optional[str]]:
+        if hasattr(column, "element"):
+            return column.element.name, column.name
+        else:
+            return column.name, None
+
+    def _build_column_projection(self, column_name: str, column_alias: str = None):
+        return f"{column_alias} = {column_name}" if column_alias else column_name
 
 
 class KustoKqlTypeCompiler(compiler.GenericTypeCompiler):
