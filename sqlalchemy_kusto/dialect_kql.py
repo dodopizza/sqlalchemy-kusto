@@ -72,6 +72,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         **kwargs,
     ):
         logger.debug(f"Incoming query {select}")
+        logger.debug(type(select.froms[0]))
 
         if len(select.froms) != 1:
             raise NotSupportedError("Only 1 from is supported in kql compiler")
