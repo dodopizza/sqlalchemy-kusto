@@ -99,7 +99,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             )  # pylint: disable=protected-access
 
         compiled_query_lines = list(filter(None, compiled_query_lines))
-        return "\n".join(compiled_query_lines)
+
+        compiled_query = "\n".join(compiled_query_lines)
+        logger.debug(f"Compiled query: {compiled_query}")
+        return compiled_query
 
     def _getMostInnerElement(self, clause):
         innerElement = getattr(clause, "element", None)
