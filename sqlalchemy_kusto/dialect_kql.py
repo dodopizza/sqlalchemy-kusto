@@ -124,7 +124,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             return clause
 
     def _extract_let_statements(self, clause) -> Tuple[str, List[str]]:
-        rows = clause.split(';')
+        rows = [s.strip() for s in clause.split(';')]
         main = next(filter(lambda row: not row.startswith("let"), rows), None)
         lets = [row + ";" for row in rows if row.startswith("let")]
         return main, lets

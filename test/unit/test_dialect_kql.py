@@ -160,7 +160,7 @@ def test_select_count_2():
     print(f"\n\nCompiled query:\n{query_compiled}")
 
 def test_select_with_let():
-    kql_query = "let x = 5; MyTable | where Field == x"
+    kql_query = "let x = 5; let y = 3; MyTable | where Field1 == x and Field2 == y"
     query = (
         select("*")
         .select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
