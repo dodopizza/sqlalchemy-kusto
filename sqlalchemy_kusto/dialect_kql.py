@@ -85,12 +85,20 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
         from_object = select.froms[0]
         if hasattr(from_object, "element"):
-            compiled_query_lines.append(f"let {from_object.name} = ({self._getMostInnerElement(from_object.element)});")
+            query = self._getMostInnerElement(from_object.element)
+            (main, lets) = self._extract_let_statements(query.text)
+            compiled_query_lines.extend(lets)
+            compiled_query_lines.append(f"let {from_object.name} = ({main});")
             compiled_query_lines.append(from_object.name)
         elif hasattr(from_object, "name"):
             compiled_query_lines.append(from_object.name)
         else:
             compiled_query_lines.append(from_object.text)
+
+        # if select._where_criteria:
+        #     t = super()._generate_delimited_and_list(select._where_criteria, **kwargs)
+        #     if t:
+        #         compiled_query_lines.append("| " + t)
 
         projections = self._get_projection_or_summarize(select)
         if projections:
@@ -104,7 +112,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
         compiled_query_lines = list(filter(None, compiled_query_lines))
 
-        compiled_query = "\n".join(compiled_query_lines) + ";"
+        compiled_query = "\n".join(compiled_query_lines)
         logger.debug(f"Compiled query: {compiled_query}")
         return compiled_query
 
@@ -114,6 +122,12 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             return self._getMostInnerElement(innerElement)
         else:
             return clause
+
+    def _extract_let_statements(self, clause) -> Tuple[str, List[str]]:
+        rows = clause.split(';')
+        main = next(filter(lambda row: not row.startswith("let"), rows), None)
+        lets = [row + ";" for row in rows if row.startswith("let")]
+        return main, lets
 
 
     def fetch_clause(self, select, **kw):  # pylint: disable=no-self-use

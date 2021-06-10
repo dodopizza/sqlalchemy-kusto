@@ -158,3 +158,15 @@ def test_select_count_2():
 
     query_compiled = query.compile(engine, compile_kwargs={"literal_binds": True})
     print(f"\n\nCompiled query:\n{query_compiled}")
+
+def test_select_with_let():
+    kql_query = "let x = 5; MyTable | where Field == x"
+    query = (
+        select("*")
+        .select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
+        .limit(5))
+
+    print(f"\n\nOriginal query:\n{query}")
+
+    query_compiled = query.compile(engine, compile_kwargs={"literal_binds": True})
+    print(f"\n\nCompiled query:\n{query_compiled}")
