@@ -6,7 +6,8 @@ from typing import List, Any, Dict, Optional, Tuple
 from sqlalchemy import Column
 from sqlalchemy.engine import default, Connection
 from sqlalchemy.engine.url import URL
-from sqlalchemy.sql import compiler, selectable
+from sqlalchemy.sql import compiler, selectable, operators
+from sqlalchemy.sql.compiler import OPERATORS
 from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integer, Float
 
 import sqlalchemy_kusto
@@ -63,6 +64,8 @@ class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
 
 
 class KustoKqlCompiler(compiler.SQLCompiler):
+    OPERATORS[operators.and_] = " and "
+
     def visit_select(
         self,
         select: selectable.Select,
