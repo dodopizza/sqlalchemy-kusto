@@ -148,7 +148,7 @@ def test_select_count_2():
     query = (
         select([column_count])
         .select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
-        .where(text('"Field1" > 1'))
+        .where(text('Field1 > 1'))
         .where(text('"Field2" < 2'))
         .order_by(text("count DESC"))
         .limit(5)

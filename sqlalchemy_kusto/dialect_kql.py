@@ -95,10 +95,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         else:
             compiled_query_lines.append(from_object.text)
 
-        # if select._where_criteria:
-        #     t = super()._generate_delimited_and_list(select._where_criteria, **kwargs)
-        #     if t:
-        #         compiled_query_lines.append("| " + t)
+        if select._whereclause is not None:
+            t = select._whereclause._compiler_dispatch(self, **kwargs)
+            if t:
+                compiled_query_lines.append(f"| where {t}")
 
         projections = self._get_projection_or_summarize(select)
         if projections:
