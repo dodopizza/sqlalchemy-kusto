@@ -21,5 +21,5 @@ setup(
             "kustokql.https = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPSDialect",
         ]
     },
-    install_requires=["azure-kusto-data=2.1.1", "sqlalchemy"],
+    install_requires=["azure-kusto-data==2.1.1", "sqlalchemy"],
 )
