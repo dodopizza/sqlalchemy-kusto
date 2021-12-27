@@ -4,6 +4,7 @@ from test.conftest import (
     AZURE_AD_CLIENT_ID,
     AZURE_AD_CLIENT_SECRET,
     AZURE_AD_TENANT_ID,
+    TABLE_NAME
 )
 from sqlalchemy import create_engine, MetaData, Table, Column, String
 
@@ -15,6 +16,25 @@ engine = create_engine(
 )
 
 
+def test_ping():
+    conn = engine.connect()
+    result = engine.dialect.do_ping(conn)
+    assert result is True
+
+
+def test_get_table_names():
+    conn = engine.connect()
+    result = engine.dialect.get_table_names(conn)
+    assert TABLE_NAME in result
+
+
+def test_get_columns():
+    conn = engine.connect()
+    columns_result = engine.dialect.get_columns(conn, TABLE_NAME)
+    assert len(columns_result) > 0
+
+
+# TODO: generate test data
 def test_fetch_one():
     engine.connect()
     result = engine.execute("select top 2 * from stoplog")
@@ -25,6 +45,7 @@ def test_fetch_one():
     assert engine is not None
 
 
+# TODO: generate test data
 def test_fetch_many():
     engine.connect()
     result = engine.execute("select top 5 * from stoplog")
@@ -34,6 +55,7 @@ def test_fetch_many():
     assert engine is not None
 
 
+# TODO: generate test data
 def test_fetch_all():
     engine.connect()
     result = engine.execute("select top 5 * from stoplog")
@@ -42,19 +64,11 @@ def test_fetch_all():
     assert engine is not None
 
 
-def test_fetch_all_2():
-    engine.connect()
-    result = engine.execute("SELECT top 5 * from stoplog")
-    print("\n")
-    print("\n".join([str(r) for r in result.fetchall()]))
-    assert engine is not None
-
-
+# TODO: generate test data
 def test_limit():
-    metadata = MetaData()
     stream = Table(
-        "stoplog",
-        metadata,
+        TABLE_NAME,
+        MetaData(),
         Column("Name", String),
         Column("UnitId", String),
     )
