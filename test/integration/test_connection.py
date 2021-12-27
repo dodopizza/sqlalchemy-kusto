@@ -4,8 +4,8 @@ from test.conftest import (
     AZURE_AD_CLIENT_ID,
     AZURE_AD_CLIENT_SECRET,
     AZURE_AD_TENANT_ID,
+    TABLE_NAME
 )
-from azure.kusto.data import KustoConnectionStringBuilder, KustoClient, ClientRequestProperties
 from sqlalchemy_kusto import connect
 
 
@@ -24,16 +24,5 @@ def test_execute():
         azure_ad_client_secret=AZURE_AD_CLIENT_SECRET,
         azure_ad_tenant_id=AZURE_AD_TENANT_ID,
     )
-    result = connection.execute("select top 5 * from stoplog").fetchall()
-    print(result)
+    result = connection.execute(f"select top 5 * from {TABLE_NAME}").fetchall()
     assert result is not None
-
-
-def test_kusto_client():
-    kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(
-        KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
-    )
-    client = KustoClient(kcsb)
-    response = client.execute(DATABASE, ".show database schema as json", ClientRequestProperties())
-    print(response.primary_results[0])
-    assert response is not None

@@ -4,7 +4,7 @@ import sqlalchemy
 from sqlalchemy import create_engine
 
 
-def test_query_error():
+def test_operational_error():
     wrong_tenant_id = "wrong_tenant_id"
     engine = create_engine(
         f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
@@ -15,4 +15,4 @@ def test_query_error():
     engine.connect()
 
     with pytest.raises(sqlalchemy.exc.OperationalError):
-        engine.execute("select top 5 * from MaterialTransferStream")
+        engine.execute("select top 5 * from logs")
