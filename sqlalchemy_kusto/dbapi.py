@@ -6,7 +6,28 @@ from azure.kusto.data._models import KustoResultColumn
 from azure.kusto.data import KustoClient, ClientRequestProperties
 from azure.kusto.data.exceptions import KustoServiceError, KustoAuthenticationError
 from sqlalchemy_kusto import errors
-from sqlalchemy_kusto.utils import check_closed, check_result
+
+
+def check_closed(func):
+    """Decorator that checks if connection/cursor is closed."""
+
+    def decorator(self, *args, **kwargs):
+        if self.closed:
+            raise Exception("{klass} already closed".format(klass=self.__class__.__name__))
+        return func(self, *args, **kwargs)
+
+    return decorator
+
+
+def check_result(func):
+    """Decorator that checks if the cursor has results from `execute`."""
+
+    def decorator(self, *args, **kwargs):
+        if self._results is None:  # pylint: disable=protected-access
+            raise Exception("Called before `execute`")
+        return func(self, *args, **kwargs)
+
+    return decorator
 
 
 def connect(
@@ -89,7 +110,6 @@ class Connection:
         self.cursors.append(cursor)
 
         return cursor
-
 
     @check_closed
     def execute(self, operation, parameters=None):

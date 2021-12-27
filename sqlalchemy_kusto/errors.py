@@ -1,4 +1,3 @@
-# pylint: disable=redefined-builtin
 class Error(Exception):
     pass
 
