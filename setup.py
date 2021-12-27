@@ -5,14 +5,14 @@ DESCRIPTION = "SQLAlchemy dialect for Azure Data Explorer (Kusto)"
 VERSION = "0.0.12"
 
 REQUIREMENTS = [
-    "azure-kusto-data==2.1.1",
-    "sqlalchemy==1.3.24",
+    "azure-kusto-data == 2.1.1",
+    "sqlalchemy == 1.3.24",
 ]
 EXTRAS = {
     "dev": [
-        "black~=21.12b0",
-        "pytest>=6.2.5"
-        "python-dotenv>=0.19.2"
+        "autopep8 >= 1.6.0",
+        "pytest >= 6.2.5",
+        "python-dotenv >= 0.19.2",
     ]
 }
 
@@ -26,7 +26,7 @@ setup(
             "kustosql.https = sqlalchemy_kusto.dialect_sql:KustoSqlHttpsDialect",
         ]
     },
-    extra_require=EXTRAS,
+    extras_require=EXTRAS,
     include_package_data=True,
     install_requires=REQUIREMENTS,
     license="Apache License, Version 2.0",
