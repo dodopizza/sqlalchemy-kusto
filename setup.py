@@ -14,9 +14,6 @@ setup(
     entry_points={
         "sqlalchemy.dialects": [
             "kustosql.https = sqlalchemy_kusto.dialect_sql:KustoSqlHttpsDialect",
-            "kustokql = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPDialect",
-            "kustokql.http = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPDialect",
-            "kustokql.https = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPSDialect",
         ]
     },
     install_requires=["azure-kusto-data==2.1.1", "sqlalchemy"],
