@@ -17,7 +17,7 @@ engine = create_engine(
 
 def test_fetch_one():
     engine.connect()
-    result = engine.execute("select top 2 * from MaterialTransferStream")
+    result = engine.execute("select top 2 * from stoplog")
     print("\n")
     print(result.fetchone())
     print(result.fetchone())
@@ -27,7 +27,7 @@ def test_fetch_one():
 
 def test_fetch_many():
     engine.connect()
-    result = engine.execute("select top 5 * from MaterialTransferStream")
+    result = engine.execute("select top 5 * from stoplog")
     print("\n")
     print("\n".join([str(r) for r in result.fetchmany(3)]))
     print("\n".join([str(r) for r in result.fetchmany(3)]))
@@ -36,7 +36,15 @@ def test_fetch_many():
 
 def test_fetch_all():
     engine.connect()
-    result = engine.execute("select top 5 * from MaterialTransferStream")
+    result = engine.execute("select top 5 * from stoplog")
+    print("\n")
+    print("\n".join([str(r) for r in result.fetchall()]))
+    assert engine is not None
+
+
+def test_fetch_all_2():
+    engine.connect()
+    result = engine.execute("SELECT top 5 * from stoplog")
     print("\n")
     print("\n".join([str(r) for r in result.fetchall()]))
     assert engine is not None
@@ -45,9 +53,9 @@ def test_fetch_all():
 def test_limit():
     metadata = MetaData()
     stream = Table(
-        "MaterialTransferStream",
+        "stoplog",
         metadata,
-        Column("MaterialTypeId", String),
+        Column("Name", String),
         Column("UnitId", String),
     )
 

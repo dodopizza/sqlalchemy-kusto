@@ -53,18 +53,25 @@ class KustoSqlCompiler(compiler.SQLCompiler):
 
         return select_precolumns
 
-    def fetch_clause(self, select, **kw):
-        """Not supported"""
-        return ""
-
     def limit_clause(self, select, **kw):
         """Do not add LIMIT to the end of the query"""
         return ""
 
+    def visit_sequence(self, sequence, **kw):
+        pass
 
-class KustoSqlDialect(default.DefaultDialect):
+    def visit_empty_set_expr(self, element_types):
+        pass
+
+    def update_from_clause(self, update_stmt, from_table, extra_froms, from_hints, **kw):
+        pass
+
+    def delete_extra_from_clause(self, update_stmt, from_table, extra_froms, from_hints, **kw):
+        pass
+
+
+class KustoSqlHttpsDialect(default.DefaultDialect):
     name = "kustosql"
-    scheme = "http"  # TODO: Use https and remove KustoSqlHttpsDialect
     driver = "rest"
     statement_compiler = KustoSqlCompiler
     type_compiler = compiler.GenericTypeCompiler
@@ -114,10 +121,8 @@ class KustoSqlDialect(default.DefaultDialect):
         return table_name in self.get_table_names(connection, schema)
 
     def get_table_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
-        database_subquery = ""
-        if schema:  # TODO: Not used in Kusto, we need to remove this if and do not use schema here
-            database_subquery = f'| where DatabaseName == "{schema}"'
-        result = connection.execute(f".show tables {database_subquery} " f"| project TableName")
+        # schema is not used in Kusto cause database is written in the connection string
+        result = connection.execute(f".show tables | project TableName")
         return [row.TableName for row in result]
 
     def get_columns(
@@ -148,14 +153,6 @@ class KustoSqlDialect(default.DefaultDialect):
     def get_view_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
         result = connection.execute(".show materialized-views | project Name")
         return [row.Name for row in result]
-
-    def get_table_options(self,
-        connection: Connection,
-        table_name: str,
-        schema: Optional[str] = None,
-        **kwargs
-    ):
-        return {}
 
     def get_pk_constraint(self, conn: Connection, table_name: str, schema: Optional[str] = None, **kw):
         return {"constrained_columns": [], "name": None}
@@ -242,9 +239,5 @@ class KustoSqlDialect(default.DefaultDialect):
     def get_view_definition(self, connection: Connection, view_name: str, schema: Optional[str] = None, **kwargs):
         pass
 
-
-KustoSqlHTTPDialect = KustoSqlDialect   # TODO: Fix dialect naming
-
-
-class KustoSqlHTTPSDialect(KustoSqlDialect):
-    scheme = "https"
+    def get_primary_keys(self, connection, table_name, schema=None, **kw):
+        pass

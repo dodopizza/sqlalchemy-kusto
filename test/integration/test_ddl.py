@@ -33,7 +33,8 @@ def test_ddl():
 
 def test_get_columns():
     conn = engine.connect()
-    columns_result = engine.dialect.get_columns(conn, "_temp__ordercomposition_extended_with_combo_1620690454")
+    columns_result = engine.dialect.get_columns(conn, "stoplog")
     print("\n")
     print("\n".join([str(r) for r in columns_result]))
     assert columns_result is not None
+

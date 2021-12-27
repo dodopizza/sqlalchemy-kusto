@@ -13,9 +13,7 @@ setup(
     zip_safe=False,
     entry_points={
         "sqlalchemy.dialects": [
-            "kustosql = sqlalchemy_kusto.dialect_sql:KustoSqlHTTPDialect",
-            "kustosql.http = sqlalchemy_kusto.dialect_sql:KustoSqlHTTPDialect",
-            "kustosql.https = sqlalchemy_kusto.dialect_sql:KustoSqlHTTPSDialect",
+            "kustosql.https = sqlalchemy_kusto.dialect_sql:KustoSqlHttpsDialect",
             "kustokql = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPDialect",
             "kustokql.http = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPDialect",
             "kustokql.https = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPSDialect",

@@ -2,9 +2,7 @@ import os
 from sqlalchemy.dialects import registry
 from dotenv import load_dotenv
 
-registry.register("kustosql", "sqlalchemy_kusto.dialect_sql", "KustoSqlHTTPDialect")
-registry.register("kustosql.http", "sqlalchemy_kusto.dialect_sql", "KustoSqlHTTPDialect")
-registry.register("kustosql.https", "sqlalchemy_kusto.dialect_sql", "KustoSqlHTTPSDialect")
+registry.register("kustosql.https", "sqlalchemy_kusto.dialect_sql", "KustoSqlHttpsDialect")
 registry.register("kustokql", "sqlalchemy_kusto.dialect_kql", "KustoKqlHTTPDialect")
 registry.register("kustokql.http", "sqlalchemy_kusto.dialect_kql", "KustoKqlHTTPDialect")
 registry.register("kustokql.https", "sqlalchemy_kusto.dialect_kql", "KustoKqlHTTPSDialect")

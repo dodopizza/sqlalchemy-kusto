@@ -22,9 +22,9 @@ engine = create_engine(
 def test_limit():
     metadata = MetaData()
     stream = Table(
-        'MaterialTransferStream',
+        'stoplog',
         metadata,
-        Column("MaterialTypeId", String),
+        Column("Name", String),
         Column("UnitId", String),
     )
 
@@ -39,7 +39,7 @@ def test_limit():
     assert result_length == 5
 
 def test_select_count_2():
-    sql = "MaterialTransferStream"
+    sql = "stoplog"
 
     column_count = literal_column("count(*)").label("count")
     query = select([column_count]) \
