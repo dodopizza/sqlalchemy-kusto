@@ -42,48 +42,32 @@ csl_to_sql_types = {
 }
 
 
-class UniversalSet:
-    def __contains__(self, item):
-        return True
-
-
-class KustoIdentifierPreparer(compiler.IdentifierPreparer):
-    reserved_words = UniversalSet()
-
-
 class KustoSqlCompiler(compiler.SQLCompiler):
     def get_select_precolumns(self, select, **kw) -> str:
-        """Kusto puts TOP, it's version of LIMIT here"""
-        # sqlalchemy.sql.selectable.Select
+        """Kusto uses TOP instead of LIMIT"""
         select_precolumns = super(KustoSqlCompiler, self).get_select_precolumns(select, **kw)
 
-        if select._limit_clause is not None:  # pylint: disable=protected-access
+        if select._limit_clause is not None:
             kw["literal_execute"] = True
-            select_precolumns += "TOP %s " % self.process(
-                select._limit_clause, **kw  # pylint: disable=protected-access
-            )
+            select_precolumns += "TOP %s " % self.process(select._limit_clause, **kw)
 
         return select_precolumns
 
-    def fetch_clause(self, select, **kw):  # pylint: disable=no-self-use
+    def fetch_clause(self, select, **kw):
+        """Not supported"""
         return ""
 
     def limit_clause(self, select, **kw):
+        """Do not add LIMIT to the end of the query"""
         return ""
 
 
-class KustoSqlTypeCompiler(compiler.GenericTypeCompiler):
-    pass
-
-
 class KustoSqlDialect(default.DefaultDialect):
-    """ See description sqlalchemy/engine/interfaces.py """
-
     name = "kustosql"
     scheme = "http"
     driver = "rest"
     statement_compiler = KustoSqlCompiler
-    type_compiler = KustoSqlTypeCompiler
+    type_compiler = compiler.GenericTypeCompiler
     preparer = compiler.IdentifierPreparer
     supports_alter = False
     supports_pk_autoincrement = False
@@ -164,8 +148,11 @@ class KustoSqlDialect(default.DefaultDialect):
         result = connection.execute(".show materialized-views  | project Name")
         return [row.Name for row in result]
 
-    def get_table_options(  # pylint: disable=no-self-use
-        self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs
+    def get_table_options(self,
+        connection: Connection,
+        table_name: str,
+        schema: Optional[str] = None,
+        **kwargs
     ):
         return {}
 
@@ -210,6 +197,48 @@ class KustoSqlDialect(default.DefaultDialect):
             return True
         except OperationalError:
             return False
+
+    def get_temp_table_names(self, connection, schema=None, **kw):
+        pass
+
+    def get_sequence_names(self, connection, schema=None, **kw):
+        pass
+
+    def get_temp_view_names(self, connection, schema=None, **kw):
+        pass
+
+    def has_sequence(self, connection, sequence_name, schema=None, **kw):
+        pass
+
+    def _get_server_version_info(self, connection):
+        pass
+
+    def _get_default_schema_name(self, connection):
+        pass
+
+    def do_set_input_sizes(self, cursor, list_of_tuples, context):
+        pass
+
+    def do_begin_twophase(self, connection, xid):
+        pass
+
+    def do_prepare_twophase(self, connection, xid):
+        pass
+
+    def do_rollback_twophase(self, connection, xid, is_prepared=True, recover=False):
+        pass
+
+    def do_commit_twophase(self, connection, xid, is_prepared=True, recover=False):
+        pass
+
+    def do_recover_twophase(self, connection):
+        pass
+
+    def set_isolation_level(self, dbapi_conn, level):
+        pass
+
+    def get_isolation_level(self, dbapi_conn):
+        pass
 
 
 KustoSqlHTTPDialect = KustoSqlDialect
