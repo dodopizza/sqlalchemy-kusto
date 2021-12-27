@@ -1,4 +1,5 @@
 from test.conftest import (
+    KUSTO_URL,
     KUSTO_SQL_ALCHEMY_URL,
     DATABASE,
     AZURE_AD_CLIENT_ID,
@@ -7,6 +8,8 @@ from test.conftest import (
     TABLE_NAME
 )
 from sqlalchemy import create_engine, MetaData, Table, Column, String
+from azure.kusto.data import KustoConnectionStringBuilder, KustoClient, ClientRequestProperties
+import uuid
 
 engine = create_engine(
     f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
@@ -79,3 +82,15 @@ def test_limit():
     result = engine.execute(query)
     result_length = len(result.fetchall())
     assert result_length == 5
+
+
+def test_create_temp_table():
+    kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(
+        KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
+    )
+    client = KustoClient(kcsb)
+    table_name = "_temp_" + uuid.uuid4().hex
+    response = client.execute(
+        DATABASE, f".create table {table_name}(['id']: int, ['text']: string)", ClientRequestProperties())
+    print(response.primary_results[0])
+    assert response is not None
