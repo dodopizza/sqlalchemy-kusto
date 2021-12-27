@@ -19,7 +19,7 @@ def parse_bool_argument(value: str) -> bool:
     raise ValueError(f"Expected boolean found {value}")
 
 
-csl_to_sql_types = {
+kql_to_sql_types = {
     "bool": Boolean,
     "boolean": Boolean,
     "datetime": TIMESTAMP,
@@ -64,7 +64,7 @@ class KustoSqlCompiler(compiler.SQLCompiler):
 
 class KustoSqlDialect(default.DefaultDialect):
     name = "kustosql"
-    scheme = "http"
+    scheme = "http"  # TODO: Use https and remove KustoSqlHttpsDialect
     driver = "rest"
     statement_compiler = KustoSqlCompiler
     type_compiler = compiler.GenericTypeCompiler
@@ -88,7 +88,7 @@ class KustoSqlDialect(default.DefaultDialect):
     }
 
     @classmethod
-    def dbapi(cls) -> ModuleType:  # pylint: disable=method-hidden
+    def dbapi(cls) -> ModuleType:
         return sqlalchemy_kusto
 
     def create_connect_args(self, url: URL) -> Tuple[List[Any], Dict[str, Any]]:
@@ -106,7 +106,7 @@ class KustoSqlDialect(default.DefaultDialect):
 
         return [], kwargs
 
-    def get_schema_names(self, connection: Connection, **kwargs) -> List[str]:  # pylint: disable=no-self-use
+    def get_schema_names(self, connection: Connection, **kwargs) -> List[str]:
         result = connection.execute(".show databases | project DatabaseName")
         return [row.DatabaseName for row in result]
 
@@ -114,7 +114,8 @@ class KustoSqlDialect(default.DefaultDialect):
         return table_name in self.get_table_names(connection, schema)
 
     def get_table_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
-        if schema:
+        database_subquery = ""
+        if schema:  # TODO: Not used in Kusto, we need to remove this if and do not use schema here
             database_subquery = f'| where DatabaseName == "{schema}"'
         result = connection.execute(f".show tables {database_subquery} " f"| project TableName")
         return [row.TableName for row in result]
@@ -137,7 +138,7 @@ class KustoSqlDialect(default.DefaultDialect):
         return [
             {
                 "name": column["Name"],
-                "type": csl_to_sql_types[column["CslType"].lower()],
+                "type": kql_to_sql_types[column["CslType"].lower()],
                 "nullable": True,
                 "default": "",
             }
@@ -145,7 +146,7 @@ class KustoSqlDialect(default.DefaultDialect):
         ]
 
     def get_view_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
-        result = connection.execute(".show materialized-views  | project Name")
+        result = connection.execute(".show materialized-views | project Name")
         return [row.Name for row in result]
 
     def get_table_options(self,
@@ -168,6 +169,7 @@ class KustoSqlDialect(default.DefaultDialect):
     def get_table_comment(
         self, connection: Connection, table_name, schema: Optional[str] = None, **kwargs
     ) -> Dict[str, Any]:
+        """Not implemented"""
         return {"text": ""}
 
     def get_indexes(
@@ -178,17 +180,11 @@ class KustoSqlDialect(default.DefaultDialect):
     def get_unique_constraints(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
         return []
 
-    def get_view_definition(self, connection: Connection, view_name: str, schema: Optional[str] = None, **kwargs):
-        pass  # pragma: no cover
-
     def _check_unicode_returns(self, connection: Connection, additional_tests: List[Any] = None) -> bool:
-        return True
+        return True  # TODO: Should we override it here or not?
 
     def _check_unicode_description(self, connection: Connection) -> bool:
-        return True
-
-    def do_rollback(self, dbapi_connection: sqlalchemy_kusto.dbapi.Connection):
-        pass
+        return True  # TODO: Should we override it here or not?
 
     def do_ping(self, dbapi_connection: sqlalchemy_kusto.dbapi.Connection):
         try:
@@ -197,6 +193,9 @@ class KustoSqlDialect(default.DefaultDialect):
             return True
         except OperationalError:
             return False
+
+    def do_rollback(self, dbapi_connection: sqlalchemy_kusto.dbapi.Connection):
+        pass
 
     def get_temp_table_names(self, connection, schema=None, **kw):
         pass
@@ -240,8 +239,11 @@ class KustoSqlDialect(default.DefaultDialect):
     def get_isolation_level(self, dbapi_conn):
         pass
 
+    def get_view_definition(self, connection: Connection, view_name: str, schema: Optional[str] = None, **kwargs):
+        pass
 
-KustoSqlHTTPDialect = KustoSqlDialect
+
+KustoSqlHTTPDialect = KustoSqlDialect   # TODO: Fix dialect naming
 
 
 class KustoSqlHTTPSDialect(KustoSqlDialect):
