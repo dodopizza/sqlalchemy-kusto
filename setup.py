@@ -10,10 +10,12 @@ REQUIREMENTS = [
 ]
 EXTRAS = {
     "dev": [
-        "autopep8>=1.6.0",
+        "black>=21.12b0",
+        "isort>=5.10.1",
+        "pylint>=2.12.2",
         "pytest>=6.2.5",
         "python-dotenv>=0.19.2",
-        "wheel",
+        "wheel>=0.37.1",
     ]
 }
 
