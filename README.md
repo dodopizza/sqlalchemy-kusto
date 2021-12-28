@@ -2,18 +2,73 @@
 Kusto dialect for SQLAlchemy
 
 ---
-File structure https://github.com/zzzeek/sqlalchemy/blob/master/README.dialects.rst#dialect-layout
+`sqlalchemy-kusto` Implements a DBAPI ([PEP-249](https://www.python.org/dev/peps/pep-0249)) and SQLAlchemy dialect, that enables SQL and basic KQL select query only execution.
 
-Inspired by https://github.com/preset-io/elasticsearch-dbapi
+## Installation
+$ pip install elasticsearch-dbapi
 
-One file example from PyDruid https://github.com/druid-io/pydruid/blob/master/pydruid/db/sqlalchemy.py
+## Library usage 
 
-Snow-flake example https://github.com/snowflakedb/snowflake-sqlalchemy
+### Using DBApi
+```python
+from sqlalchemy_kusto import connect
+
+connection = connect(
+        kusto_url,
+        database_name,
+        False,
+        None,
+        azure_ad_client_id=kusto_client_id,
+        azure_ad_client_secret=kusto_client_secret,
+        azure_ad_tenant_id=kusto_tenant_id,
+)
+result = connection.execute(f"select 1").fetchall()
+```
+
+### Using SQLAlchemy raw sql
+
+```python
+from sqlalchemy.engine import create_engine
+
+engine = create_engine(
+    f"{kusto_url}/{database_name}?"
+    f"msi=False&azure_ad_client_id={kusto_client_id}&"
+    f"azure_ad_client_secret={kusto_client_secret}&"
+    f"azure_ad_tenant_id={kusto_tenant_id}"
+)
+engine.connect()
+cursor = engine.execute(f"select top 1")
+data_rows = cursor.fetchall()
 
 
-To make dialect work, we should have db api over Kusto database. 
-See https://www.python.org/dev/peps/pep-0249
-Kusto db api path: sqlalchemy_kusto/dbapi.py
+```
+
+### Using SQLAlchemy 
+
+```python
+from sqlalchemy import create_engine, MetaData, Table, Column, String, Integer
+
+engine = create_engine(
+    f"{kusto_url}/{database_name}?"
+    f"msi=False&azure_ad_client_id={kusto_client_id}&"
+    f"azure_ad_client_secret={kusto_client_secret}&"
+    f"azure_ad_tenant_id={kusto_tenant_id}"
+)
+
+my_table = Table(
+        "MyTable",
+        MetaData(),
+        Column("Id", Integer),
+        Column("Text", String),
+)
+
+query = my_table.select().limit(5)
+
+engine.connect()
+cursor = engine.execute(query)
+print([row for row in cursor])
+```
+
 
 ---
 Issue that inspired this solution https://github.com/apache/superset/issues/10646
