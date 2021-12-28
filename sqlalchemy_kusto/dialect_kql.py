@@ -11,8 +11,8 @@ from sqlalchemy_kusto.dialect_base import KustoBaseDialect
 logger = logging.getLogger(__name__)
 
 aggregates_sql_to_kql = {
-        "count(*)": "count()",
-    }
+    "count(*)": "count()",
+}
 
 
 class UniversalSet:
@@ -25,7 +25,7 @@ class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
 
     def __init__(self, dialect, **kw):
         super(KustoKqlIdentifierPreparer, self).__init__(
-            dialect, initial_quote="", final_quote="", **kw
+            dialect, initial_quote='["', final_quote='"]', **kw
         )
 
 
@@ -48,7 +48,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         logger.debug(type(select.froms[0]))
 
         if len(select.froms) != 1:
-            raise NotSupportedError("Only 1 from is supported in kql compiler")
+            raise NotSupportedError("Only 1 from query is supported in kql compiler")
 
         compiled_query_lines = []
 
@@ -88,20 +88,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def limit_clause(self, select, **kw):
         return ""
 
-    def visit_sequence(self, sequence, **kw):
-        pass
-
-    def visit_empty_set_expr(self, element_types):
-        pass
-
-    def update_from_clause(self, update_stmt, from_table, extra_froms, from_hints, **kw):
-        pass
-
-    def delete_extra_from_clause(self, update_stmt, from_table, extra_froms, from_hints, **kw):
-        pass
-
     def _get_projection_or_summarize(self, select: selectable.Select) -> str:
-        # TODO: Migrate to select.exported_columns
         columns = select.inner_columns
         if columns is not None:
             column_labels = []
@@ -111,9 +98,15 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
                 if column_name in aggregates_sql_to_kql:
                     is_summarize = True
-                    column_labels.append(self._build_column_projection(aggregates_sql_to_kql[column_name], column_alias))
+                    column_labels.append(
+                        self._build_column_projection(
+                            aggregates_sql_to_kql[column_name], column_alias
+                        )
+                    )
                 else:
-                    column_labels.append(self._build_column_projection(column_name, column_alias))
+                    column_labels.append(
+                        self._build_column_projection(column_name, column_alias)
+                    )
 
             if column_labels:
                 projection_type = "summarize" if is_summarize else "project"
@@ -129,7 +122,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     @staticmethod
     def _extract_let_statements(clause) -> Tuple[str, List[str]]:
-        rows = [s.strip() for s in clause.split(';')]
+        rows = [s.strip() for s in clause.split(";")]
         main = next(filter(lambda row: not row.startswith("let"), rows), None)
         lets = [row + ";" for row in rows if row.startswith("let")]
         return main, lets
@@ -146,12 +139,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return f"{column_alias} = {column_name}" if column_alias else column_name
 
 
-# class KustoKqlTypeCompiler(compiler.GenericTypeCompiler):
-#     pass
-
-
 class KustoKqlHttpsDialect(KustoBaseDialect):
     name = "kustokql"
     statement_compiler = KustoKqlCompiler
-    # type_compiler = KustoKqlTypeCompiler
     preparer = KustoKqlIdentifierPreparer
