@@ -13,6 +13,7 @@ EXTRAS = {
         "autopep8>=1.6.0",
         "pytest>=6.2.5",
         "python-dotenv>=0.19.2",
+        "wheel",
     ]
 }
 
