@@ -1,3 +1,5 @@
+import pytest
+
 from test.conftest import (
     KUSTO_URL,
     KUSTO_SQL_ALCHEMY_URL,
@@ -5,9 +7,8 @@ from test.conftest import (
     AZURE_AD_CLIENT_ID,
     AZURE_AD_CLIENT_SECRET,
     AZURE_AD_TENANT_ID,
-    TABLE_NAME
 )
-from sqlalchemy import create_engine, MetaData, Table, Column, String
+from sqlalchemy import create_engine, MetaData, Table, Column, String, Integer
 from azure.kusto.data import KustoConnectionStringBuilder, KustoClient, ClientRequestProperties
 import uuid
 
@@ -25,55 +26,46 @@ def test_ping():
     assert result is True
 
 
-def test_get_table_names():
+def test_get_table_names(temp_table_name):
     conn = engine.connect()
     result = engine.dialect.get_table_names(conn)
-    assert TABLE_NAME in result
+    assert temp_table_name in result
 
 
-def test_get_columns():
+def test_get_columns(temp_table_name):
     conn = engine.connect()
-    columns_result = engine.dialect.get_columns(conn, TABLE_NAME)
-    assert len(columns_result) > 0
+    columns_result = engine.dialect.get_columns(conn, temp_table_name)
+    assert set(["Id", "Text"]) == set([c["name"] for c in columns_result])
 
 
-# TODO: generate test data
-def test_fetch_one():
+def test_fetch_one(temp_table_name):
     engine.connect()
-    result = engine.execute("select top 2 * from stoplog")
-    print("\n")
-    print(result.fetchone())
-    print(result.fetchone())
-    print(result.fetchone())
-    assert engine is not None
+    result = engine.execute(f"select top 2 * from {temp_table_name} order by Id")
+    assert result.fetchone() == (1, 'value_1')
+    assert result.fetchone() == (2, 'value_2')
+    assert result.fetchone() is None
 
 
-# TODO: generate test data
-def test_fetch_many():
+def test_fetch_many(temp_table_name):
     engine.connect()
-    result = engine.execute("select top 5 * from stoplog")
-    print("\n")
-    print("\n".join([str(r) for r in result.fetchmany(3)]))
-    print("\n".join([str(r) for r in result.fetchmany(3)]))
-    assert engine is not None
+    result = engine.execute(f"select top 5 * from {temp_table_name} order by Id")
+
+    assert set([(x[0], x[1]) for x in result.fetchmany(3)]) == set([(1, 'value_1'), (2, 'value_2'), (3, 'value_3')])
+    assert set([(x[0], x[1]) for x in result.fetchmany(3)]) == set([(4, 'value_4'), (5, 'value_5')])
 
 
-# TODO: generate test data
-def test_fetch_all():
+def test_fetch_all(temp_table_name):
     engine.connect()
-    result = engine.execute("select top 5 * from stoplog")
-    print("\n")
-    print("\n".join([str(r) for r in result.fetchall()]))
-    assert engine is not None
+    result = engine.execute(f"select top 3 * from {temp_table_name} order by Id")
+    assert set([(x[0], x[1]) for x in result.fetchall()]) == set([(1, 'value_1'), (2, 'value_2'), (3, 'value_3')])
 
 
-# TODO: generate test data
-def test_limit():
+def test_limit(temp_table_name):
     stream = Table(
-        TABLE_NAME,
+        temp_table_name,
         MetaData(),
-        Column("Name", String),
-        Column("UnitId", String),
+        Column("Id", Integer),
+        Column("Text", String),
     )
 
     query = stream.select().limit(5)
@@ -84,20 +76,46 @@ def test_limit():
     assert result_length == 5
 
 
-def test_create_temp_table():
+def _create_temp_table(table_name: str):
     kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(
         KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
     )
     client = KustoClient(kcsb)
-    table_name = "_temp_" + uuid.uuid4().hex
     response = client.execute(
         DATABASE, f".create table {table_name}(Id: int, Text: string)", ClientRequestProperties())
-    print(response.primary_results[0])
 
-    data_to_ingest = [(i, str(i)) for i in range(1, 10)]
-    str_data = "\n".join("{}, {}".format(*p) for p in data_to_ingest.items())
+
+def _ingest_data_to_table(table_name: str):
+    kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(
+        KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
+    )
+    client = KustoClient(kcsb)
+    data_to_ingest = {i: "value_" + str(i) for i in range(1, 10)}
+    str_data = "\n".join("{},{}".format(*p) for p in data_to_ingest.items())
     ingest_query = f""".ingest inline into table {table_name} <|
-        {str_data}"""
-    response = client.execute(ingest_query, ClientRequestProperties())
-    print(response)
-    assert response is not None
+            {str_data}"""
+    response = client.execute(DATABASE, ingest_query, ClientRequestProperties())
+
+
+def _drop_table(table_name: str):
+    kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(
+        KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
+    )
+    client = KustoClient(kcsb)
+
+    response = client.execute(DATABASE, f".drop table {table_name}", ClientRequestProperties())
+
+
+@pytest.fixture()
+def temp_table_name():
+    return "_temp_" + uuid.uuid4().hex
+
+
+@pytest.fixture(autouse=True)
+def run_around_tests(temp_table_name):
+    _create_temp_table(temp_table_name)
+    _ingest_data_to_table(temp_table_name)
+    # A test function will be run at this point
+    yield temp_table_name
+    _drop_table(temp_table_name)
+    # assert files_before == files_after
