@@ -91,6 +91,13 @@ def test_create_temp_table():
     client = KustoClient(kcsb)
     table_name = "_temp_" + uuid.uuid4().hex
     response = client.execute(
-        DATABASE, f".create table {table_name}(['id']: int, ['text']: string)", ClientRequestProperties())
+        DATABASE, f".create table {table_name}(Id: int, Text: string)", ClientRequestProperties())
     print(response.primary_results[0])
+
+    data_to_ingest = [(i, str(i)) for i in range(1, 10)]
+    str_data = "\n".join("{}, {}".format(*p) for p in data_to_ingest.items())
+    ingest_query = f""".ingest inline into table {table_name} <|
+        {str_data}"""
+    response = client.execute(ingest_query, ClientRequestProperties())
+    print(response)
     assert response is not None
