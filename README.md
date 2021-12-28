@@ -5,7 +5,9 @@ Kusto dialect for SQLAlchemy
 `sqlalchemy-kusto` Implements a DBAPI ([PEP-249](https://www.python.org/dev/peps/pep-0249)) and SQLAlchemy dialect, that enables SQL and basic KQL select query only execution.
 
 ## Installation
-$ pip install elasticsearch-dbapi
+```shell
+$ pip install sqlalchemy-kusto
+```
 
 ## Library usage 
 
