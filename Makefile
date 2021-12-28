@@ -40,7 +40,7 @@ check: # Run formatters and linters
 
 	@echo "Done.\n"
 
-test: # Run the tests.
+test: # Run tests
 	@echo "Running tests..."
 	$(PYTHON) -m pytest -v
 	@echo "Done.\n"
