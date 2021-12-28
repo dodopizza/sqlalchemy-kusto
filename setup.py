@@ -15,14 +15,20 @@ EXTRAS = {
         "pylint>=2.12.2",
         "pytest>=6.2.5",
         "python-dotenv>=0.19.2",
-        "wheel>=0.37.1",
     ]
 }
+
+with open("README.md", "r", encoding="utf-8") as f:
+    LONG_DESCRIPTION = f.read()
 
 setup(
     author="Dodo Engineering",
     author_email="devcommunity@dodopizza.com",
-    classifiers=["Intended Audience :: Developers"],
+    classifiers=[
+        "Intended Audience :: Developers",
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: Apache Software License",
+    ],
     description=DESCRIPTION,
     entry_points={
         "sqlalchemy.dialects": [
@@ -33,9 +39,15 @@ setup(
     include_package_data=True,
     install_requires=REQUIREMENTS,
     license="Apache License, Version 2.0",
+    long_description=LONG_DESCRIPTION,
+    long_description_content_type="text/markdown",
     name=NAME,
     url="https://github.com/dodopizza/sqlalchemy-kusto",
     packages=find_packages(exclude=["tests", "tests.*"]),
+    project_urls={
+        "Bug Tracker": "https://github.com/dodopizza/sqlalchemy-kusto/issues",
+    },
+    python_requires=">=3.8",
     version=VERSION,
     zip_safe=False,
 )

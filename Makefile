@@ -1,4 +1,4 @@
-.PHONY: venv install install-dev build clean check test
+.PHONY: venv install install-dev build clean check test release pypi
 
 ##############################################################################
 # Environment variables
@@ -9,6 +9,8 @@ PYTHON=${VENV_DIR}/bin/python
 ##############################################################################
 # Development set up
 ##############################################################################
+install: venv install-dev
+
 venv: # Create new venv if not exists
 	@echo "Creating new virtual environment $(GREEN_ITALIC)$(VENV_DIR)$(DEFAULT) if not exists..."
 	@test -d $(VENV_DIR) || python -m venv $(VENV_DIR)
@@ -20,8 +22,6 @@ install-dev: # Install dev dependencies
 	@echo "Installing dev dependencies..."
 	$(PYTHON) -m pip install -e ".[dev]"
 	@echo "Done.\n"
-
-install: venv install-dev
 
 ##############################################################################
 # Development process
@@ -53,16 +53,29 @@ build: # Build sqlalchemy-kusto package
 	@echo "Building the project..."
 	rm -rf build/*
 	rm -rf dist/*
-	$(PYTHON) setup.py clean bdist_wheel
+	$(PYTHON) -m pip install --upgrade build
+	$(PYTHON) -m build
 	@echo "Done. You may find the project artifact in the $(GREEN_ITALIC)dist$(DEFAULT) folder.\n"
 
 clean: # Clean all working folders
 	@echo "Removing working folders..."
 	rm -rf $(VENV_DIR)
-	rm -rf build
 	rm -rf dist
 	rm -rf sqlalchemy_kusto.egg-info
 	@echo "Done.\n"
+
+
+##############################################################################
+# Release new version
+##############################################################################
+release: build pypi
+
+pypi: # Upload package to PyPi repository
+	@echo "Uploading to PyPi..."
+	$(PYTHON) -m pip install --upgrade twine
+	$(PYTHON) -m twine upload dist/*
+	@echo "Done. The package is available via the link: https://pypi.org/project/sqlalchemy-kusto\n"
+
 
 ##############################################################################
 # Output highlights
