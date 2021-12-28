@@ -1,4 +1,4 @@
-from test.conftest import KUSTO_SQL_ALCHEMY_URL, DATABASE, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET
+from tests.conftest import KUSTO_SQL_ALCHEMY_URL, DATABASE, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET
 import pytest
 import sqlalchemy
 from sqlalchemy import create_engine

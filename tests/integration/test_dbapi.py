@@ -1,4 +1,4 @@
-from test.conftest import (
+from tests.conftest import (
     KUSTO_URL,
     DATABASE,
     AZURE_AD_CLIENT_ID,
