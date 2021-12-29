@@ -1,4 +1,4 @@
-.PHONY: venv install install-dev build clean check test release pypi
+.PHONY: venv install install-dev build clean check test unit integration release pypi
 
 ##############################################################################
 # Environment variables
@@ -43,11 +43,17 @@ check: # Run formatters and linters
 
 	@echo "Done.\n"
 
-test: # Run tests
-	@echo "Running tests..."
-	$(PYTHON) -m pytest -v
+test: unit integration
+
+unit: # Run unit tests
+	@echo "Running unit tests..."
+	$(PYTHON) -m pytest -v tests/unit/
 	@echo "Done.\n"
 
+integration: # Run integration tests
+	@echo "Running integration tests..."
+	$(PYTHON) -m pytest -v tests/integration/
+	@echo "Done.\n"
 
 ##############################################################################
 # Build and cleanup

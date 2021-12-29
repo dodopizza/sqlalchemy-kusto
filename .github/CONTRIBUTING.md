@@ -24,8 +24,21 @@ Other helpful [Makefile](../Makefile) targets:
 
 ```bash
 make check  # Run formatters and linters
-make test   # Run tests
+make unit   # Run unit tests
 ```
+
+## Integration tests setup
+
+We have integration tests against real Kusto instance. To set up such tests you need to create `.env` file and provide your Kusto instance credentials. See [.env.smaple](../.env.sample) for more details.
+
+To run integration tests use one of the following commands:
+
+```bash
+make integration  # Run integration tests
+make test         # Run both unit and integration tests
+```
+
+You are __not required__ to set up and run integration tests for contributing.
 
 ## Use a Consistent Coding Style
 

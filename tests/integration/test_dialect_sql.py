@@ -4,7 +4,7 @@ import pytest
 from azure.kusto.data import ClientRequestProperties, KustoClient, KustoConnectionStringBuilder
 from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
 
-from tests.conftest import (
+from tests.integration.conftest import (
     AZURE_AD_CLIENT_ID,
     AZURE_AD_CLIENT_SECRET,
     AZURE_AD_TENANT_ID,
