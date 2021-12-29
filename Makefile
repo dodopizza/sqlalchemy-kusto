@@ -1,5 +1,5 @@
 .PHONY: venv install install-dev build clean check test unit integration release pypi
-include .env
+-include .env
 
 ##############################################################################
 # Environment variables
@@ -61,17 +61,17 @@ integration: # Run integration tests
 ##############################################################################
 build: # Build sqlalchemy-kusto package
 	@echo "Building the project..."
-	rm -rf build/*
-	rm -rf dist/*
+	-rm -rf build/*
+	-rm -rf dist/*
 	$(PYTHON) -m pip install --upgrade build
 	$(PYTHON) -m build
 	@echo "Done. You may find the project artifact in the $(GREEN_ITALIC)dist$(DEFAULT) folder.\n"
 
 clean: # Clean all working folders
 	@echo "Removing working folders..."
-	rm -rf $(VENV_DIR)
-	rm -rf dist
-	rm -rf sqlalchemy_kusto.egg-info
+	-rm -rf $(VENV_DIR)
+	-rm -rf dist
+	-rm -rf sqlalchemy_kusto.egg-info
 	@echo "Done.\n"
 
 
