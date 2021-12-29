@@ -29,7 +29,7 @@ make unit   # Run unit tests
 
 ## Integration tests setup
 
-We have integration tests against real Kusto instance. To set up such tests you need to create `.env` file and provide your Kusto instance credentials. See [.env.smaple](../.env.sample) for more details.
+We have integration tests against real Kusto instance. To set up such tests you need to create `.env` file and provide your Kusto instance credentials. See `Integration tests setup` section of [.env.sample](../.env.sample) for more details.
 
 To run integration tests use one of the following commands:
 
