@@ -21,6 +21,7 @@ class UniversalSet:
 
 
 class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
+    # We want to quote all table and column names to prevent unconventional names usage
     reserved_words = UniversalSet()
 
     def __init__(self, dialect, **kw):
@@ -44,11 +45,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         lateral=False,
         **kwargs,
     ):
-        logger.debug(f"Incoming query {select}")
-        logger.debug(type(select.froms[0]))
+        logger.debug("Incoming query %s", select)
 
         if len(select.froms) != 1:
-            raise NotSupportedError("Only 1 from query is supported in kql compiler")
+            raise NotSupportedError("Only single \"select from\" query is supported in kql compiler")
 
         compiled_query_lines = []
 
@@ -89,6 +89,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return ""
 
     def _get_projection_or_summarize(self, select: selectable.Select) -> str:
+        """Builds the ending part of the query either project or summarize"""
         columns = select.inner_columns
         if columns is not None:
             column_labels = []
@@ -114,6 +115,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return ""
 
     def _get_most_inner_element(self, clause):
+        """Finds the most nested element in clause"""
         inner_element = getattr(clause, "element", None)
         if inner_element is not None:
             return self._get_most_inner_element(inner_element)
@@ -122,6 +124,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     @staticmethod
     def _extract_let_statements(clause) -> Tuple[str, List[str]]:
+        """Separates the final query from let statements"""
         rows = [s.strip() for s in clause.split(";")]
         main = next(filter(lambda row: not row.startswith("let"), rows), None)
         lets = [row + ";" for row in rows if row.startswith("let")]
@@ -136,6 +139,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     @staticmethod
     def _build_column_projection(column_name: str, column_alias: str = None):
+        """Generates column alias semantic for project statement"""
         return f"{column_alias} = {column_name}" if column_alias else column_name
 
 

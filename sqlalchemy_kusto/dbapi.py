@@ -150,19 +150,19 @@ class Cursor:
     @check_result
     @check_closed
     def rowcount(self) -> int:
-        """Count the number of rows on a result."""
+        """Counts the number of rows on a result."""
         # consume the iterator
         results = list(self._results)
         return len(results)
 
     @check_closed
     def close(self):
-        """Close the cursor."""
+        """Closes the cursor."""
         self.closed = True
 
     @check_closed
     def execute(self, operation, parameters=None) -> "Cursor":
-        """Execute query. Supports only SELECT statements."""
+        """Executes query. Supports only SELECT statements."""
         if operation.lower().startswith("select"):
             self.properties.set_option("query_language", "sql")
         else:
@@ -193,7 +193,7 @@ class Cursor:
     @check_closed
     def fetchone(self):
         """
-        Fetch the next row of a query result set, returning a single sequence,
+        Fetches the next row of a query result set, returning a single sequence,
         or `None` when no more data is available.
         """
         if self.rowcount > self.current_item_index:
@@ -207,7 +207,7 @@ class Cursor:
     @check_closed
     def fetchmany(self, size: int = None):
         """
-        Fetch the next set of rows of a query result, returning a sequence of
+        Fetches the next set of rows of a query result, returning a sequence of
         sequences (e.g. a list of tuples). An empty sequence is returned when
         no more rows are available.
         """
@@ -222,7 +222,7 @@ class Cursor:
     @check_closed
     def fetchall(self):
         """
-        Fetch all (remaining) rows of a query result, returning them as a
+        Fetches all (remaining) rows of a query result, returning them as a
         sequence of sequences (e.g. a list of tuples). Note that the cursor's
         arraysize attribute can affect the performance of this operation.
         """
@@ -240,7 +240,7 @@ class Cursor:
 
     @staticmethod
     def _get_description_from_columns(columns: List[KustoResultColumn]) -> List[CursorDescriptionRow]:
-        """Get CursorDescriptionRow for Kusto columns"""
+        """Gets CursorDescriptionRow for Kusto columns"""
         return [
             CursorDescriptionRow(
                 name=column.column_name,
@@ -266,7 +266,7 @@ class Cursor:
 
     @staticmethod
     def _apply_parameters(operation, parameters) -> str:
-        """Apply parameters to operation string"""
+        """Applies parameters to operation string"""
         if not parameters:
             return operation
 
