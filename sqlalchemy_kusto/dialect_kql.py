@@ -1,7 +1,7 @@
 import logging
 from typing import List, Optional, Tuple
 
-from sqlalchemy import Column
+from sqlalchemy import Column, exc
 from sqlalchemy.sql import compiler, operators, selectable
 from sqlalchemy.sql.compiler import OPERATORS
 
@@ -126,6 +126,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         """Separates the final query from let statements"""
         rows = [s.strip() for s in clause.split(";")]
         main = next(filter(lambda row: not row.startswith("let"), rows), None)
+
+        if main is None:
+            raise exc.InvalidRequestError("The query doesn't contain body.")
+
         lets = [row + ";" for row in rows if row.startswith("let")]
         return main, lets
 

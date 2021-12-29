@@ -38,6 +38,9 @@ check: # Run formatters and linters
 	@echo "\n3. Run $(GREEN_ITALIC)pylint$(DEFAULT) to lint the project."
 	$(PYTHON) -m pylint setup.py sqlalchemy_kusto/
 
+	@echo "\n4. Run $(GREEN_ITALIC)mypy$(DEFAULT) for type checking."
+	$(PYTHON) -m mypy .
+
 	@echo "Done.\n"
 
 test: # Run tests

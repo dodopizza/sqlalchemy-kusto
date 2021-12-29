@@ -1,5 +1,5 @@
 from collections import namedtuple
-from typing import List, Optional
+from typing import Any, List, Optional, Tuple
 
 from azure.kusto.data import ClientRequestProperties, KustoClient, KustoConnectionStringBuilder
 from azure.kusto.data._models import KustoResultColumn
@@ -137,21 +137,21 @@ class Cursor:
         database: str,
         properties: Optional[ClientRequestProperties] = None,
     ):
+        self._results: Optional[List[Tuple[Any, ...]]] = None
         self.kusto_client = kusto_client
         self.database = database
         self.closed = False
-        self.description = None
-        self._results = None
+        self.description: Optional[List[CursorDescriptionRow]] = None
         self.current_item_index = 0
         self.properties = properties if properties is not None else ClientRequestProperties()
 
-    @property
+    @property  # type: ignore
     @check_result
     @check_closed
     def rowcount(self) -> int:
         """Counts the number of rows on a result."""
-        # consume the iterator
-        results = list(self._results)
+        # Consumes the iterator
+        results = list(self._results)  # type: ignore # check_result decorator will ensure that value is not None
         return len(results)
 
     @check_closed
@@ -196,7 +196,7 @@ class Cursor:
         or `None` when no more data is available.
         """
         if self.rowcount > self.current_item_index:
-            item = self._results[self.current_item_index]
+            item = self._results[self.current_item_index]  # type: ignore
             self.current_item_index += 1
             return item
 
@@ -211,7 +211,7 @@ class Cursor:
         no more rows are available.
         """
         if size:
-            items = self._results[self.current_item_index : self.current_item_index + size]
+            items = self._results[self.current_item_index : self.current_item_index + size]  # type: ignore
             self.current_item_index += size
             return items
 
@@ -225,7 +225,7 @@ class Cursor:
         sequence of sequences (e.g. a list of tuples). Note that the cursor's
         arraysize attribute can affect the performance of this operation.
         """
-        return list(self._results)
+        return list(self._results)  # type: ignore
 
     @check_closed
     def setinputsizes(self, sizes):
@@ -255,9 +255,10 @@ class Cursor:
     def __iter__(self):
         return self
 
+    @check_result
     @check_closed
     def __next__(self):
-        return next(self._results)
+        return next(self._results)  # type: ignore
 
     next = __next__
 
@@ -285,7 +286,7 @@ class Cursor:
         if isinstance(value, bool):
             return "TRUE" if value else "FALSE"
         if isinstance(value, (int, float)):
-            return value
+            return str(value)
         if isinstance(value, (list, tuple)):
             return ", ".join(Cursor._escape(element) for element in value)
 
