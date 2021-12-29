@@ -94,9 +94,6 @@ def test_select_count():
         .limit(5)
     )
 
-    engine.dialect.identifier_preparer.initial_quote = "["
-    engine.dialect.identifier_preparer.final_quote = "]"
-
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
 
     query_expected = (
@@ -136,11 +133,16 @@ def test_quotes():
         Column(quote("Field1"), String),
         Column(quote("Field2"), String),
     )
-
     query = stream.select().limit(5)
 
     query_compiled = str(query.compile(engine)).replace("\n", "")
 
-    query_expected = "logs" '| project ["Field1"], ["Field2"]' "| take %(param_1)s"
+    # fmt: off
+    query_expected = (
+        "logs"
+        '| project ["Field1"], ["Field2"]'
+        "| take %(param_1)s"
+    )
+    # fmt: on
 
     assert query_compiled == query_expected
