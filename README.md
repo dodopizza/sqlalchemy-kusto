@@ -1,6 +1,6 @@
 # Azure Data Explorer (Kusto) dialect for SQLAlchemy
 
-`sqlalchemy-kusto` шmplements a DBAPI ([PEP-249](https://www.python.org/dev/peps/pep-0249)) and [SQLAlchemy dialect](https://docs.sqlalchemy.org/en/14/dialects/) that enables SQL query execution via SQLAlchemy.
+`sqlalchemy-kusto` implements a DBAPI ([PEP-249](https://www.python.org/dev/peps/pep-0249)) and [SQLAlchemy dialect](https://docs.sqlalchemy.org/en/14/dialects/) that enables SQL query execution via SQLAlchemy.
 
 Notice that implemented Kusto dialects don't support DDL statements and inserts, deletes, updates.
 
