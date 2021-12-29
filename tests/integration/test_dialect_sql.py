@@ -1,6 +1,6 @@
 import pytest
 
-from test.conftest import (
+from tests.conftest import (
     KUSTO_URL,
     KUSTO_SQL_ALCHEMY_URL,
     DATABASE,

@@ -1,0 +1,60 @@
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+name: SQLAlchemy dialect for Azure Data Explorer (Kusto)
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    name: Run formatters and linters
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - uses: actions/cache@v2
+        with:
+          path: .venv
+          key: ${{ runner.os }}-venv-${{ hashFiles("**/setup.py") }}
+          restore-keys: |
+            ${{ runner.os }}-venv-
+
+      - name: Setup virtual environment
+        run: make install
+
+      - name: Run checks
+        run: make check
+
+  tests:
+    runs-on: ubuntu-latest
+    name:  Run tests
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Setup Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: 3.8
+
+      - uses: actions/cache@v2
+        with:
+          path: .venv
+          key: ${{ runner.os }}-venv-${{ hashFiles("**/setup.py") }}
+          restore-keys: |
+            ${{ runner.os }}-venv-
+
+      - name: Setup virtual environment
+        run: make install
+
+      - name: Run tests
+        run: make test

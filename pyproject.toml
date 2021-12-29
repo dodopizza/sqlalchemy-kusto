@@ -1,0 +1,40 @@
+[build-system]
+requires = [
+    "setuptools>=42",
+    "wheel>=0.37.1",
+]
+build-backend = "setuptools.build_meta"
+
+[tool.black]
+line-length = 120
+target-version = ["py38"]
+include = ".pyi?$"
+exclude = """
+(
+  /(
+      .eggs         # exclude a few common directories in the
+    | .git          # root of the project
+    | .mypy_cache
+    | .tox
+    | .venv
+    | build
+    | dist
+    | venv
+  )/
+)
+"""
+
+[tool.isort]
+line_length = 120
+multi_line_output = 3
+include_trailing_comma = true
+force_grid_wrap = 0
+use_parentheses = true
+
+[tool.pylint.messages_control]
+max-line-length = 120
+disable = [
+    "missing-module-docstring",
+    "missing-function-docstring",
+]
+

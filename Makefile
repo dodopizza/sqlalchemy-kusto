@@ -1,46 +1,84 @@
-.PHONY: venv install install-dev build
+.PHONY: venv install install-dev build clean check test release pypi
 
 ##############################################################################
 # Environment variables
 ##############################################################################
-VENV_DIR = venv
+VENV_DIR = .venv
 PYTHON=${VENV_DIR}/bin/python
 
 ##############################################################################
 # Development set up
 ##############################################################################
+install: venv install-dev
+
 venv: # Create new venv if not exists
-	@echo "Create new virtual environment $(RED_ITALIC)$(VENV_DIR)$(DEFAULT) if not exists..."
+	@echo "Creating new virtual environment $(GREEN_ITALIC)$(VENV_DIR)$(DEFAULT) if not exists..."
 	@test -d $(VENV_DIR) || python -m venv $(VENV_DIR)
-	@echo "Done! You may use $(RED_ITALIC)source $(VENV_DIR)/bin/activate$(DEFAULT) to activate it and install packages manually, or use Makefile targets for all project setup routines.\n"
+	$(PYTHON) -m pip install --upgrade pip
+	$(PYTHON) --version
+	@echo "Done! You may use $(GREEN_ITALIC)source $(VENV_DIR)/bin/activate$(DEFAULT) to activate it and install packages manually, or use Makefile targets for all project setup routines.\n"
 
 install-dev: # Install dev dependencies
-	@echo "Install dev dependencies..."
+	@echo "Installing dev dependencies..."
 	$(PYTHON) -m pip install -e ".[dev]"
 	@echo "Done.\n"
 
-install: venv install-dev
+##############################################################################
+# Development process
+##############################################################################
+check: # Run formatters and linters
+	@echo "Running checkers..."
+
+	@echo "\n1. Run $(GREEN_ITALIC)isort$(DEFAULT) to order imports."
+	$(PYTHON) -m isort .
+
+	@echo "\n2. Run $(GREEN_ITALIC)black$(DEFAULT) to format code."
+	$(PYTHON) -m black .
+
+	@echo "\n3. Run $(GREEN_ITALIC)pylint$(DEFAULT) to lint the project."
+	$(PYTHON) -m pylint setup.py sqlalchemy_kusto/
+
+	@echo "Done.\n"
+
+test: # Run tests
+	@echo "Running tests..."
+	$(PYTHON) -m pytest -v
+	@echo "Done.\n"
+
 
 ##############################################################################
-# Development set up
+# Build and cleanup
 ##############################################################################
 build: # Build sqlalchemy-kusto package
-	@echo "Build the project..."
+	@echo "Building the project..."
 	rm -rf build/*
 	rm -rf dist/*
-	$(PYTHON) setup.py clean bdist_wheel
-	@echo "Done. You may find the project artifact in the $(RED_ITALIC)dist$(DEFAULT) folder.\n"
+	$(PYTHON) -m pip install --upgrade build
+	$(PYTHON) -m build
+	@echo "Done. You may find the project artifact in the $(GREEN_ITALIC)dist$(DEFAULT) folder.\n"
+
+clean: # Clean all working folders
+	@echo "Removing working folders..."
+	rm -rf $(VENV_DIR)
+	rm -rf dist
+	rm -rf sqlalchemy_kusto.egg-info
+	@echo "Done.\n"
+
+
+##############################################################################
+# Release new version
+##############################################################################
+release: build pypi
+
+pypi: # Upload package to PyPi repository
+	@echo "Uploading to PyPi..."
+	$(PYTHON) -m pip install --upgrade twine
+	$(PYTHON) -m twine upload dist/*
+	@echo "Done. The package is available via the link: https://pypi.org/project/sqlalchemy-kusto\n"
+
 
 ##############################################################################
 # Output highlights
 ##############################################################################
 DEFAULT = \033[0m
-BLACK = \033[30;1;1m
-RED = \033[31;1;1m
-RED_ITALIC = \033[31;3;1m
-GREEN = \033[32;1;1m
-GOLD = \033[33;1;1m
-BLUE = \033[34;1;1m
-PURPLE = \033[35;1;1m
-TEAL = \033[36;1;1m
-GREY = \033[37;1;1m
+GREEN_ITALIC = \033[32;3;1m
