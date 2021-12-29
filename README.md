@@ -24,7 +24,7 @@ $ pip install sqlalchemy-kusto
 
 ## Library usage 
 
-### Using DBApi
+### Using DBAPI
 
 ```python
 from sqlalchemy_kusto import connect
