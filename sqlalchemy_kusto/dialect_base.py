@@ -1,15 +1,14 @@
 import json
 from abc import ABC
-
 from types import ModuleType
-from typing import List, Any, Dict, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 
+from sqlalchemy.engine import Connection, default
 from sqlalchemy.engine.url import URL
-from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integer, Float
-from sqlalchemy.engine import default, Connection
 from sqlalchemy.sql import compiler
+from sqlalchemy.types import DATE, TIMESTAMP, BigInteger, Boolean, Float, Integer, String
+
 import sqlalchemy_kusto
-from sqlalchemy_kusto import OperationalError
 
 
 def parse_bool_argument(value: str) -> bool:
@@ -66,7 +65,7 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
     }
 
     @classmethod
-    def dbapi(cls) -> ModuleType:
+    def dbapi(cls) -> ModuleType:  # pylint: disable-msg=method-hidden
         return sqlalchemy_kusto
 
     def create_connect_args(self, url: URL) -> Tuple[List[Any], Dict[str, Any]]:
@@ -92,8 +91,8 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         return table_name in self.get_table_names(connection, schema)
 
     def get_table_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
-        # schema is not used in Kusto cause database is written in the connection string
-        result = connection.execute(f".show tables | project TableName")
+        # Schema is not used in Kusto cause database is written in the connection string
+        result = connection.execute(".show tables | project TableName")
         return [row.TableName for row in result]
 
     def get_columns(
@@ -149,17 +148,17 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         return []
 
     def _check_unicode_returns(self, connection: Connection, additional_tests: List[Any] = None) -> bool:
-        return True  # TODO: Should we override it here or not?
+        return True
 
     def _check_unicode_description(self, connection: Connection) -> bool:
-        return True  # TODO: Should we override it here or not?
+        return True
 
     def do_ping(self, dbapi_connection: sqlalchemy_kusto.dbapi.Connection):
         try:
             query = ".show tables"
             dbapi_connection.execute(query)
             return True
-        except OperationalError:
+        except sqlalchemy_kusto.OperationalError:
             return False
 
     def do_rollback(self, dbapi_connection: sqlalchemy_kusto.dbapi.Connection):

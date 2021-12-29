@@ -2,7 +2,7 @@ import logging
 from typing import List, Optional, Tuple
 
 from sqlalchemy import Column
-from sqlalchemy.sql import compiler, selectable, operators
+from sqlalchemy.sql import compiler, operators, selectable
 from sqlalchemy.sql.compiler import OPERATORS
 
 from sqlalchemy_kusto import NotSupportedError
@@ -25,13 +25,16 @@ class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
     reserved_words = UniversalSet()
 
     def __init__(self, dialect, **kw):
-        super(KustoKqlIdentifierPreparer, self).__init__(
-            dialect, initial_quote='["', final_quote='"]', **kw
-        )
+        super().__init__(dialect, initial_quote='["', final_quote='"]', **kw)
 
 
 class KustoKqlCompiler(compiler.SQLCompiler):
     OPERATORS[operators.and_] = " and "
+
+    delete_extra_from_clause = None
+    update_from_clause = None
+    visit_empty_set_expr = None
+    visit_sequence = None
 
     def visit_select(
         self,
@@ -45,10 +48,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         lateral=False,
         **kwargs,
     ):
-        logger.debug("Incoming query %s", select)
+        logger.debug("Incoming query: %s", select)
 
         if len(select.froms) != 1:
-            raise NotSupportedError("Only single \"select from\" query is supported in kql compiler")
+            raise NotSupportedError('Only single "select from" query is supported in kql compiler')
 
         compiled_query_lines = []
 
@@ -65,9 +68,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             compiled_query_lines.append(from_object.text)
 
         if select._whereclause is not None:
-            t = select._whereclause._compiler_dispatch(self, **kwargs)
-            if t:
-                compiled_query_lines.append(f"| where {t}")
+            where_clause = select._whereclause._compiler_dispatch(self, **kwargs)
+            if where_clause:
+                compiled_query_lines.append(f"| where {where_clause}")
 
         projections = self._get_projection_or_summarize(select)
         if projections:
@@ -82,7 +85,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         compiled_query_lines = list(filter(None, compiled_query_lines))
 
         compiled_query = "\n".join(compiled_query_lines)
-        logger.debug(f"Compiled query: {compiled_query}")
+        logger.debug("Compiled query: %s", compiled_query)
         return compiled_query
 
     def limit_clause(self, select, **kw):
@@ -100,14 +103,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 if column_name in aggregates_sql_to_kql:
                     is_summarize = True
                     column_labels.append(
-                        self._build_column_projection(
-                            aggregates_sql_to_kql[column_name], column_alias
-                        )
+                        self._build_column_projection(aggregates_sql_to_kql[column_name], column_alias)
                     )
                 else:
-                    column_labels.append(
-                        self._build_column_projection(column_name, column_alias)
-                    )
+                    column_labels.append(self._build_column_projection(column_name, column_alias))
 
             if column_labels:
                 projection_type = "summarize" if is_summarize else "project"
@@ -119,8 +118,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         inner_element = getattr(clause, "element", None)
         if inner_element is not None:
             return self._get_most_inner_element(inner_element)
-        else:
-            return clause
+
+        return clause
 
     @staticmethod
     def _extract_let_statements(clause) -> Tuple[str, List[str]]:
@@ -134,8 +133,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def _extract_column_name_and_alias(column: Column) -> Tuple[str, Optional[str]]:
         if hasattr(column, "element"):
             return column.element.name, column.name
-        else:
-            return column.name, None
+
+        return column.name, None
 
     @staticmethod
     def _build_column_projection(column_name: str, column_alias: str = None):

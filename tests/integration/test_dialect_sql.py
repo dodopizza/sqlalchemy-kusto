@@ -1,16 +1,17 @@
+import uuid
+
 import pytest
+from azure.kusto.data import ClientRequestProperties, KustoClient, KustoConnectionStringBuilder
+from sqlalchemy import Column, Integer, MetaData, String, Table, create_engine
 
 from tests.conftest import (
-    KUSTO_URL,
-    KUSTO_SQL_ALCHEMY_URL,
-    DATABASE,
     AZURE_AD_CLIENT_ID,
     AZURE_AD_CLIENT_SECRET,
     AZURE_AD_TENANT_ID,
+    DATABASE,
+    KUSTO_SQL_ALCHEMY_URL,
+    KUSTO_URL,
 )
-from sqlalchemy import create_engine, MetaData, Table, Column, String, Integer
-from azure.kusto.data import KustoConnectionStringBuilder, KustoClient, ClientRequestProperties
-import uuid
 
 engine = create_engine(
     f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
@@ -41,8 +42,8 @@ def test_get_columns(temp_table_name):
 def test_fetch_one(temp_table_name):
     engine.connect()
     result = engine.execute(f"select top 2 * from {temp_table_name} order by Id")
-    assert result.fetchone() == (1, 'value_1')
-    assert result.fetchone() == (2, 'value_2')
+    assert result.fetchone() == (1, "value_1")
+    assert result.fetchone() == (2, "value_2")
     assert result.fetchone() is None
 
 
@@ -50,14 +51,14 @@ def test_fetch_many(temp_table_name):
     engine.connect()
     result = engine.execute(f"select top 5 * from {temp_table_name} order by Id")
 
-    assert set([(x[0], x[1]) for x in result.fetchmany(3)]) == set([(1, 'value_1'), (2, 'value_2'), (3, 'value_3')])
-    assert set([(x[0], x[1]) for x in result.fetchmany(3)]) == set([(4, 'value_4'), (5, 'value_5')])
+    assert set([(x[0], x[1]) for x in result.fetchmany(3)]) == set([(1, "value_1"), (2, "value_2"), (3, "value_3")])
+    assert set([(x[0], x[1]) for x in result.fetchmany(3)]) == set([(4, "value_4"), (5, "value_5")])
 
 
 def test_fetch_all(temp_table_name):
     engine.connect()
     result = engine.execute(f"select top 3 * from {temp_table_name} order by Id")
-    assert set([(x[0], x[1]) for x in result.fetchall()]) == set([(1, 'value_1'), (2, 'value_2'), (3, 'value_3')])
+    assert set([(x[0], x[1]) for x in result.fetchall()]) == set([(1, "value_1"), (2, "value_2"), (3, "value_3")])
 
 
 def test_limit(temp_table_name):
@@ -81,8 +82,7 @@ def _create_temp_table(table_name: str):
         KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
     )
     client = KustoClient(kcsb)
-    response = client.execute(
-        DATABASE, f".create table {table_name}(Id: int, Text: string)", ClientRequestProperties())
+    response = client.execute(DATABASE, f".create table {table_name}(Id: int, Text: string)", ClientRequestProperties())
 
 
 def _ingest_data_to_table(table_name: str):

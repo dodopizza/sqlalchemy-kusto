@@ -34,7 +34,15 @@ use_parentheses = true
 [tool.pylint.messages_control]
 max-line-length = 120
 disable = [
-    "missing-module-docstring",
+    "consider-using-f-string",
+    "missing-class-docstring",
     "missing-function-docstring",
+    "missing-module-docstring",
+    "no-self-use",
+    "protected-access",
+    "too-few-public-methods",
+    "too-many-arguments",
+    "too-many-locals",
+    "too-many-public-methods",
+    "unused-argument",
 ]
-

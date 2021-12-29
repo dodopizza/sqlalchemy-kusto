@@ -6,7 +6,7 @@ from sqlalchemy_kusto.dialect_base import KustoBaseDialect
 class KustoSqlCompiler(compiler.SQLCompiler):
     def get_select_precolumns(self, select, **kw) -> str:
         """Kusto uses TOP instead of LIMIT"""
-        select_precolumns = super(KustoSqlCompiler, self).get_select_precolumns(select, **kw)
+        select_precolumns = super().get_select_precolumns(select, **kw)
 
         if select._limit_clause is not None:
             kw["literal_execute"] = True

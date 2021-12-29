@@ -1,10 +1,10 @@
-
-from azure.kusto.data import KustoClient, KustoConnectionStringBuilder, ClientRequestProperties
 from collections import namedtuple
-from typing import Optional, List
+from typing import List, Optional
+
+from azure.kusto.data import ClientRequestProperties, KustoClient, KustoConnectionStringBuilder
 from azure.kusto.data._models import KustoResultColumn
-from azure.kusto.data import KustoClient, ClientRequestProperties
-from azure.kusto.data.exceptions import KustoServiceError, KustoAuthenticationError
+from azure.kusto.data.exceptions import KustoAuthenticationError, KustoServiceError
+
 from sqlalchemy_kusto import errors
 
 
@@ -96,7 +96,6 @@ class Connection:
     @check_closed
     def commit(self):
         """Kusto does not support transactions."""
-        pass
 
     @check_closed
     def cursor(self):
@@ -212,7 +211,7 @@ class Cursor:
         no more rows are available.
         """
         if size:
-            items = self._results[self.current_item_index: self.current_item_index + size]
+            items = self._results[self.current_item_index : self.current_item_index + size]
             self.current_item_index += size
             return items
 
@@ -231,12 +230,10 @@ class Cursor:
     @check_closed
     def setinputsizes(self, sizes):
         """Not supported"""
-        pass
 
     @check_closed
     def setoutputsizes(self, sizes):
         """Not supported"""
-        pass
 
     @staticmethod
     def _get_description_from_columns(columns: List[KustoResultColumn]) -> List[CursorDescriptionRow]:
