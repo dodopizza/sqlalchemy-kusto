@@ -19,7 +19,7 @@ KQL dialect still in progress. Please, use it on your own risk for now.
 ## Installation
 
 ```shell
-$ pip install sqlalchemy-kusto
+pip install sqlalchemy-kusto
 ```
 
 ## Library usage 
