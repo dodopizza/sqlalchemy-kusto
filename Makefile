@@ -83,9 +83,7 @@ release: build pypi
 pypi: # Upload package to PyPi repository
 	@echo "Uploading to PyPi..."
 	$(PYTHON) -m pip install --upgrade twine
-	$(PYTHON) -m twine upload dist/*
-	@echo "Done. The package is available via the link: https://pypi.org/project/sqlalchemy-kusto\n"
-
+	$(PYTHON) -m twine upload --username __token__ --password $(PYPI_API_TOKEN) dist/*
 
 ##############################################################################
 # Output highlights
