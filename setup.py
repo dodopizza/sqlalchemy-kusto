@@ -49,7 +49,7 @@ setup(
     project_urls={
         "Bug Tracker": "https://github.com/dodopizza/sqlalchemy-kusto/issues",
     },
-    python_requires=">=3.8",
+    python_requires=">=3.7",
     version=VERSION,
     zip_safe=False,
 )
