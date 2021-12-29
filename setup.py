@@ -1,25 +1,55 @@
-import os
 from setuptools import find_packages, setup
 
-VERSION = "0.0.12"
-BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+NAME = "sqlalchemy-kusto"
+DESCRIPTION = "Azure Data Explorer (Kusto) dialect for SQLAlchemy"
+VERSION = "1.0.0"
+
+REQUIREMENTS = [
+    "azure-kusto-data==2.1.1",
+    "sqlalchemy==1.3.24",
+]
+EXTRAS = {
+    "dev": [
+        "black>=21.12b0",
+        "isort>=5.10.1",
+        "mypy>=0.9.30",
+        "pylint>=2.12.2",
+        "pytest>=6.2.5",
+        "python-dotenv>=0.19.2",
+    ]
+}
+
+with open("README.md", "r", encoding="utf-8") as f:
+    LONG_DESCRIPTION = f.read()
 
 setup(
-    name="sqlalchemy-kusto",
-    description=("Kusto sqlalchemy dialect"),
-    version=VERSION,
-    packages=find_packages(),
-    include_package_data=True,
-    zip_safe=False,
+    author="Dodo Engineering",
+    author_email="devcommunity@dodopizza.com",
+    classifiers=[
+        "Intended Audience :: Developers",
+        "Programming Language :: Python :: 3",
+        "License :: OSI Approved :: Apache Software License",
+    ],
+    description=DESCRIPTION,
     entry_points={
         "sqlalchemy.dialects": [
-            "kustosql = sqlalchemy_kusto.dialect_sql:KustoSqlHTTPDialect",
-            "kustosql.http = sqlalchemy_kusto.dialect_sql:KustoSqlHTTPDialect",
-            "kustosql.https = sqlalchemy_kusto.dialect_sql:KustoSqlHTTPSDialect",
-            "kustokql = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPDialect",
-            "kustokql.http = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPDialect",
-            "kustokql.https = sqlalchemy_kusto.dialect_kql:KustoKqlHTTPSDialect",
+            "kustosql.https = sqlalchemy_kusto.dialect_sql:KustoSqlHttpsDialect",
+            "kustokql.https = sqlalchemy_kusto.dialect_kql:KustoKqlHttpsDialect",
         ]
     },
-    install_requires=["azure-kusto-data==2.1.1", "sqlalchemy"],
+    extras_require=EXTRAS,
+    include_package_data=True,
+    install_requires=REQUIREMENTS,
+    license="Apache License, Version 2.0",
+    long_description=LONG_DESCRIPTION,
+    long_description_content_type="text/markdown",
+    name=NAME,
+    url="https://github.com/dodopizza/sqlalchemy-kusto",
+    packages=find_packages(exclude=["tests", "tests.*"]),
+    project_urls={
+        "Bug Tracker": "https://github.com/dodopizza/sqlalchemy-kusto/issues",
+    },
+    python_requires=">=3.8",
+    version=VERSION,
+    zip_safe=False,
 )

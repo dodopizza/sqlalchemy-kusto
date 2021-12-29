@@ -1,53 +1,19 @@
-import json
 import logging
-from types import ModuleType
-from typing import List, Any, Dict, Optional, Tuple
+from typing import List, Optional, Tuple
 
-from sqlalchemy import Column
-from sqlalchemy.engine import default, Connection
-from sqlalchemy.engine.url import URL
-from sqlalchemy.sql import compiler, selectable, operators
+from sqlalchemy import Column, exc
+from sqlalchemy.sql import compiler, operators, selectable
 from sqlalchemy.sql.compiler import OPERATORS
-from sqlalchemy.types import Boolean, TIMESTAMP, DATE, String, BigInteger, Integer, Float
 
-import sqlalchemy_kusto
-from sqlalchemy_kusto import OperationalError, NotSupportedError
+from sqlalchemy_kusto import NotSupportedError
+from sqlalchemy_kusto.dialect_base import KustoBaseDialect
 
 logger = logging.getLogger(__name__)
-
-def parse_bool_argument(value: str) -> bool:
-    if value in ("True", "true"):
-        return True
-    if value in ("False", "false"):
-        return False
-    raise ValueError(f"Expected boolean found {value}")
-
-
-csl_to_sql_types = {
-    "bool": Boolean,
-    "boolean": Boolean,
-    "datetime": TIMESTAMP,
-    "date": DATE,
-    "dynamic": String,
-    "stringbuffer": String,
-    "guid": String,
-    "int": Integer,
-    "i32": Integer,
-    "i16": Integer,
-    "i8": Integer,
-    "r64": Float,
-    "r32": Float,
-    "long": BigInteger,
-    "i64": BigInteger,
-    "string": String,
-    "timespan": String,
-    "decimal": Float,
-    "real": Float,
-}
 
 aggregates_sql_to_kql = {
     "count(*)": "count()",
 }
+
 
 class UniversalSet:
     def __contains__(self, item):
@@ -55,16 +21,20 @@ class UniversalSet:
 
 
 class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
+    # We want to quote all table and column names to prevent unconventional names usage
     reserved_words = UniversalSet()
 
     def __init__(self, dialect, **kw):
-        super(KustoKqlIdentifierPreparer, self).__init__(
-            dialect, initial_quote="", final_quote="", **kw
-        )
+        super().__init__(dialect, initial_quote='["', final_quote='"]', **kw)
 
 
 class KustoKqlCompiler(compiler.SQLCompiler):
     OPERATORS[operators.and_] = " and "
+
+    delete_extra_from_clause = None
+    update_from_clause = None
+    visit_empty_set_expr = None
+    visit_sequence = None
 
     def visit_select(
         self,
@@ -78,17 +48,16 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         lateral=False,
         **kwargs,
     ):
-        logger.debug(f"Incoming query {select}")
-        logger.debug(type(select.froms[0]))
+        logger.debug("Incoming query: %s", select)
 
         if len(select.froms) != 1:
-            raise NotSupportedError("Only 1 from is supported in kql compiler")
+            raise NotSupportedError('Only single "select from" query is supported in kql compiler')
 
         compiled_query_lines = []
 
         from_object = select.froms[0]
         if hasattr(from_object, "element"):
-            query = self._getMostInnerElement(from_object.element)
+            query = self._get_most_inner_element(from_object.element)
             (main, lets) = self._extract_let_statements(query.text)
             compiled_query_lines.extend(lets)
             compiled_query_lines.append(f"let {from_object.name} = ({main});")
@@ -99,9 +68,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             compiled_query_lines.append(from_object.text)
 
         if select._whereclause is not None:
-            t = select._whereclause._compiler_dispatch(self, **kwargs)
-            if t:
-                compiled_query_lines.append(f"| where {t}")
+            where_clause = select._whereclause._compiler_dispatch(self, **kwargs)
+            if where_clause:
+                compiled_query_lines.append(f"| where {where_clause}")
 
         projections = self._get_projection_or_summarize(select)
         if projections:
@@ -116,31 +85,14 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         compiled_query_lines = list(filter(None, compiled_query_lines))
 
         compiled_query = "\n".join(compiled_query_lines)
-        logger.debug(f"Compiled query: {compiled_query}")
+        logger.debug("Compiled query: %s", compiled_query)
         return compiled_query
-
-    def _getMostInnerElement(self, clause):
-        innerElement = getattr(clause, "element", None)
-        if innerElement is not None:
-            return self._getMostInnerElement(innerElement)
-        else:
-            return clause
-
-    def _extract_let_statements(self, clause) -> Tuple[str, List[str]]:
-        rows = [s.strip() for s in clause.split(';')]
-        main = next(filter(lambda row: not row.startswith("let"), rows), None)
-        lets = [row + ";" for row in rows if row.startswith("let")]
-        return main, lets
-
-
-    def fetch_clause(self, select, **kw):  # pylint: disable=no-self-use
-        return ""
 
     def limit_clause(self, select, **kw):
         return ""
 
     def _get_projection_or_summarize(self, select: selectable.Select) -> str:
-        # TODO: Migrate to select.exported_columns
+        """Builds the ending part of the query either project or summarize"""
         columns = select.inner_columns
         if columns is not None:
             column_labels = []
@@ -150,7 +102,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
                 if column_name in aggregates_sql_to_kql:
                     is_summarize = True
-                    column_labels.append(self._build_column_projection(aggregates_sql_to_kql[column_name], column_alias))
+                    column_labels.append(
+                        self._build_column_projection(aggregates_sql_to_kql[column_name], column_alias)
+                    )
                 else:
                     column_labels.append(self._build_column_projection(column_name, column_alias))
 
@@ -159,158 +113,40 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 return f"| {projection_type} {', '.join(column_labels)}"
         return ""
 
-    def _extract_column_name_and_alias(self, column: Column) -> Tuple[str, Optional[str]]:
+    def _get_most_inner_element(self, clause):
+        """Finds the most nested element in clause"""
+        inner_element = getattr(clause, "element", None)
+        if inner_element is not None:
+            return self._get_most_inner_element(inner_element)
+
+        return clause
+
+    @staticmethod
+    def _extract_let_statements(clause) -> Tuple[str, List[str]]:
+        """Separates the final query from let statements"""
+        rows = [s.strip() for s in clause.split(";")]
+        main = next(filter(lambda row: not row.startswith("let"), rows), None)
+
+        if main is None:
+            raise exc.InvalidRequestError("The query doesn't contain body.")
+
+        lets = [row + ";" for row in rows if row.startswith("let")]
+        return main, lets
+
+    @staticmethod
+    def _extract_column_name_and_alias(column: Column) -> Tuple[str, Optional[str]]:
         if hasattr(column, "element"):
             return column.element.name, column.name
-        else:
-            return column.name, None
 
-    def _build_column_projection(self, column_name: str, column_alias: str = None):
+        return column.name, None
+
+    @staticmethod
+    def _build_column_projection(column_name: str, column_alias: str = None):
+        """Generates column alias semantic for project statement"""
         return f"{column_alias} = {column_name}" if column_alias else column_name
 
 
-class KustoKqlTypeCompiler(compiler.GenericTypeCompiler):
-    pass
-
-
-class KustoKqlDialect(default.DefaultDialect):
-    """ See description sqlalchemy/engine/interfaces.py """
-
+class KustoKqlHttpsDialect(KustoBaseDialect):
     name = "kustokql"
-    scheme = "http"
-    driver = "rest"
     statement_compiler = KustoKqlCompiler
-    type_compiler = KustoKqlTypeCompiler
     preparer = KustoKqlIdentifierPreparer
-    supports_alter = False
-    supports_pk_autoincrement = False
-    supports_default_values = True
-    supports_empty_insert = False
-    supports_unicode_statements = True
-    supports_unicode_binds = True
-    returns_unicode_strings = True
-    description_encoding = None
-    supports_native_boolean = True
-    supports_simple_order_by_label = True
-    _map_parse_connection_parameters: Dict[str, Any] = {
-        "msi": parse_bool_argument,
-        "azure_ad_client_id": str,
-        "azure_ad_client_secret": str,
-        "azure_ad_tenant_id": str,
-        "user_msi": str,
-    }
-
-    @classmethod
-    def dbapi(cls) -> ModuleType:  # pylint: disable=method-hidden
-        return sqlalchemy_kusto
-
-    def create_connect_args(self, url: URL) -> Tuple[List[Any], Dict[str, Any]]:
-        kwargs: Dict[str, Any] = {
-            "cluster": "https://" + url.host,
-            "database": url.database,
-        }
-
-        if url.query:
-            kwargs.update(url.query)
-
-        for name, parse_func in self._map_parse_connection_parameters.items():
-            if name in kwargs:
-                kwargs[name] = parse_func(url.query[name])
-
-        return [], kwargs
-
-    def get_schema_names(self, connection: Connection, **kwargs) -> List[str]:  # pylint: disable=no-self-use
-        result = connection.execute(".show databases | project DatabaseName")
-        return [row.DatabaseName for row in result]
-
-    def has_table(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs) -> bool:
-        return table_name in self.get_table_names(connection, schema)
-
-    def get_table_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
-        if schema:
-            database_subquery = f'| where DatabaseName == "{schema}"'
-        result = connection.execute(f".show tables {database_subquery} " f"| project TableName")
-        return [row.TableName for row in result]
-
-    def get_columns(
-        self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs
-    ) -> List[Dict[str, Any]]:
-        table_search_query = f"""
-            .show tables
-            | where TableName == "{table_name}"
-        """
-        table_search_result = connection.execute(table_search_query)
-        entity_type = "table" if table_search_result.rowcount == 1 else "materialized-view"
-
-        query = f".show {entity_type} {table_name} schema as json"
-        query_result = connection.execute(query)
-        rows = list(query_result)
-        entity_schema = json.loads(rows[0].Schema)
-
-        return [
-            {
-                "name": column["Name"],
-                "type": csl_to_sql_types[column["CslType"].lower()],
-                "nullable": True,
-                "default": "",
-            }
-            for column in entity_schema["OrderedColumns"]
-        ]
-
-    def get_view_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
-        result = connection.execute(".show materialized-views  | project Name")
-        return [row.Name for row in result]
-
-    def get_table_options(  # pylint: disable=no-self-use
-        self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs
-    ):
-        return {}
-
-    def get_pk_constraint(self, conn: Connection, table_name: str, schema: Optional[str] = None, **kw):
-        return {"constrained_columns": [], "name": None}
-
-    def get_foreign_keys(self, connection, table_name, schema=None, **kwargs):
-        return []
-
-    def get_check_constraints(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
-        return []
-
-    def get_table_comment(
-        self, connection: Connection, table_name, schema: Optional[str] = None, **kwargs
-    ) -> Dict[str, Any]:
-        return {"text": ""}
-
-    def get_indexes(
-        self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs
-    ) -> List[Dict[str, Any]]:
-        return []
-
-    def get_unique_constraints(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
-        return []
-
-    def get_view_definition(self, connection: Connection, view_name: str, schema: Optional[str] = None, **kwargs):
-        pass  # pragma: no cover
-
-    def _check_unicode_returns(self, connection: Connection, additional_tests: List[Any] = None) -> bool:
-        return True
-
-    def _check_unicode_description(self, connection: Connection) -> bool:
-        return True
-
-    def do_rollback(self, dbapi_connection: sqlalchemy_kusto.dbapi.Connection):
-        pass
-
-    def do_ping(self, dbapi_connection: sqlalchemy_kusto.dbapi.Connection):
-        try:
-            query = ".show tables"
-            dbapi_connection.execute(query)
-            return True
-        except OperationalError:
-            return False
-
-
-KustoKqlHTTPDialect = KustoKqlDialect
-
-
-class KustoKqlHTTPSDialect(KustoKqlDialect):
-    scheme = "https"

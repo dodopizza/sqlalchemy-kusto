@@ -1,9 +1,8 @@
-# pylint: disable=redefined-builtin
 class Error(Exception):
     pass
 
 
-class Warning(Exception):
+class Warning(Exception):  # pylint: disable-msg=redefined-builtin
     pass
 
 
