@@ -2,9 +2,17 @@
 
 `sqlalchemy-kusto` implements a DBAPI ([PEP-249](https://www.python.org/dev/peps/pep-0249)) and [SQLAlchemy dialect](https://docs.sqlalchemy.org/en/14/dialects/) that enables SQL query execution via SQLAlchemy.
 
-Notice that implemented Kusto dialects don't support DDL statements and inserts, deletes, updates.
+Current project includes support for two dialects: SQL dialect and KQL dialect.
 
-In SQL dialect pay your attention that Kusto implementation of T-SQL has not full coverage; check the [list of known issues](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/api/tds/sqlknownissues).
+## SQL dialect
+
+Current implementation has full support for SQL queries. But pay your attention that Kusto implementation of T-SQL has not full coverage; check the [list of known issues](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/api/tds/sqlknownissues).
+
+## KQL dialect
+
+KQL dialect still in progress. Please, use it on your own risk for now.
+
+> Notice that implemented Kusto dialects don't support DDL statements and inserts, deletes, updates.
 
 ## Installation
 

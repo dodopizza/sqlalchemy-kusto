@@ -1,4 +1,5 @@
 .PHONY: venv install install-dev build clean check test unit integration release pypi
+include .env
 
 ##############################################################################
 # Environment variables
