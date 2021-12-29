@@ -33,6 +33,7 @@ setup(
     entry_points={
         "sqlalchemy.dialects": [
             "kustosql.https = sqlalchemy_kusto.dialect_sql:KustoSqlHttpsDialect",
+            "kustokql.https = sqlalchemy_kusto.dialect_kql:KustoKqlHttpsDialect",
         ]
     },
     extras_require=EXTRAS,
