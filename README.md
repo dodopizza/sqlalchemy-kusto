@@ -1,14 +1,13 @@
-# sqlalchemy-kusto
-Kusto dialect for SQLAlchemy
+# Azure Data Explorer (Kusto) dialect for SQLAlchemy
 
----
-`sqlalchemy-kusto` Implements a DBAPI ([PEP-249](https://www.python.org/dev/peps/pep-0249)) and [SQLAlchemy dialect](https://docs.sqlalchemy.org/en/14/dialects/) that enables SQL query execution via SQLAlchemy.
+`sqlalchemy-kusto` шmplements a DBAPI ([PEP-249](https://www.python.org/dev/peps/pep-0249)) and [SQLAlchemy dialect](https://docs.sqlalchemy.org/en/14/dialects/) that enables SQL query execution via SQLAlchemy.
 
 Notice that implemented Kusto dialects don't support DDL statements and inserts, deletes, updates.
 
 In SQL dialect pay your attention that Kusto implementation of T-SQL has not full coverage; check the [list of known issues](https://docs.microsoft.com/en-us/azure/data-explorer/kusto/api/tds/sqlknownissues).
 
 ## Installation
+
 ```shell
 $ pip install sqlalchemy-kusto
 ```
@@ -16,18 +15,20 @@ $ pip install sqlalchemy-kusto
 ## Library usage 
 
 ### Using DBApi
+
 ```python
 from sqlalchemy_kusto import connect
 
 connection = connect(
-        kusto_url,
-        database_name,
-        False,
-        None,
+        cluster=kusto_url,
+        database=database_name,
+        msi=False,
+        user_msi=None,
         azure_ad_client_id=kusto_client_id,
         azure_ad_client_secret=kusto_client_secret,
         azure_ad_tenant_id=kusto_tenant_id,
 )
+
 result = connection.execute(f"select 1").fetchall()
 ```
 
@@ -45,8 +46,6 @@ engine = create_engine(
 engine.connect()
 cursor = engine.execute(f"select top 1")
 data_rows = cursor.fetchall()
-
-
 ```
 
 ### Using SQLAlchemy 
@@ -75,6 +74,9 @@ cursor = engine.execute(query)
 print([row for row in cursor])
 ```
 
+## Contributing
+
+Please see the [CONTRIBUTING.md](.github/CONTRIBUTING.md) for development setup and contributing process guidelines.
 
 ---
-Issue that inspired this solution https://github.com/apache/superset/issues/10646
+[Issue in Apache Superset repository](https://github.com/apache/superset/issues/10646) that inspired current solution.
