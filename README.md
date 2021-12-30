@@ -1,5 +1,7 @@
 # Azure Data Explorer (Kusto) dialect for SQLAlchemy
 
+[![pypi](https://img.shields.io/pypi/v/sqlalchemy-kusto)](https://pypi.org/project/sqlalchemy-kusto/)
+
 `sqlalchemy-kusto` implements a DBAPI ([PEP-249](https://www.python.org/dev/peps/pep-0249)) and [SQLAlchemy dialect](https://docs.sqlalchemy.org/en/14/dialects/) that enables SQL query execution via SQLAlchemy.
 
 Current project includes support for two dialects: SQL dialect and KQL dialect.
@@ -17,12 +19,12 @@ KQL dialect still in progress. Please, use it on your own risk for now.
 ## Installation
 
 ```shell
-$ pip install sqlalchemy-kusto
+pip install sqlalchemy-kusto
 ```
 
 ## Library usage 
 
-### Using DBApi
+### Using DBAPI
 
 ```python
 from sqlalchemy_kusto import connect
