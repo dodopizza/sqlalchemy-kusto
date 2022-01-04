@@ -146,3 +146,44 @@ def test_quotes():
     # fmt: on
 
     assert query_compiled == query_expected
+
+
+def test_schema_from_metadata():
+    quote = engine.dialect.identifier_preparer.quote
+    metadata = MetaData(schema="mydb")
+    stream = Table(
+        "logs",
+        metadata,
+        Column(quote("Field1"), String),
+        Column(quote("Field2"), String),
+    )
+    query = stream.select().limit(5)
+
+    query_compiled = str(query.compile(engine)).replace("\n", "")
+
+    # fmt: off
+    query_expected = (
+        'database("mydb").logs'
+        '| project ["Field1"], ["Field2"]'
+        "| take %(param_1)s"
+    )
+    # fmt: on
+
+    assert query_compiled == query_expected
+
+
+def test_schema_from_query():
+    kql_query = "let x = 5; let y = 3; mydb.MyTable | where Field1 == x and Field2 == y"
+    query = select("*").select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry")).limit(5)
+
+    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+
+    query_expected = (
+        "let x = 5;"
+        "let y = 3;"
+        'let inner_qry = (database("mydb").MyTable | where Field1 == x and Field2 == y);'
+        "inner_qry"
+        "| take 5"
+    )
+
+    assert query_compiled == query_expected

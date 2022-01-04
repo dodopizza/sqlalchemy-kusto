@@ -60,12 +60,14 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             query = self._get_most_inner_element(from_object.element)
             (main, lets) = self._extract_let_statements(query.text)
             compiled_query_lines.extend(lets)
-            compiled_query_lines.append(f"let {from_object.name} = ({main});")
+            compiled_query_lines.append(f"let {from_object.name} = ({self._convert_schema_in_statement(main)});")
             compiled_query_lines.append(from_object.name)
         elif hasattr(from_object, "name"):
+            if from_object.schema is not None:
+                compiled_query_lines.append(f'database("{from_object.schema}").')
             compiled_query_lines.append(from_object.name)
         else:
-            compiled_query_lines.append(from_object.text)
+            compiled_query_lines.append(self._convert_schema_in_statement(from_object.text))
 
         if select._whereclause is not None:
             where_clause = select._whereclause._compiler_dispatch(self, **kwargs)
@@ -144,6 +146,22 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def _build_column_projection(column_name: str, column_alias: str = None):
         """Generates column alias semantic for project statement"""
         return f"{column_alias} = {column_name}" if column_alias else column_name
+
+    @staticmethod
+    def _convert_schema_in_statement(query: str) -> str:
+        """
+        Converts schema in the query from SQL notation to KQL notation. Returns converted query.
+
+        Example:
+            schema.table_name -> database("schema").table_name
+        """
+        query_parts = query.split()
+
+        if "." in query_parts[0]:
+            schema, table_name = query_parts[0].split(".")
+            query_parts[0] = f'database("{schema}").{table_name}'
+
+        return " ".join(query_parts)
 
 
 class KustoKqlHttpsDialect(KustoBaseDialect):
