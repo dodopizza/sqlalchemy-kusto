@@ -157,9 +157,15 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         """
         query_parts = query.split()
 
-        if "." in query_parts[0]:
-            schema, table_name = query_parts[0].split(".")
-            query_parts[0] = f'database("{schema}").{table_name}'
+        #  We handle the following possible situations here:
+        # - mydb.MyTable    (schema with table name);
+        # - mydb."my.table" (schema with dot-separated table name, it should be quoted by Kusto syntax rules);
+        # - "my.table"      (dot-separated table name without schema)
+        if "." in query_parts[0] and not query_parts[0].startswith('"'):
+            table_name_parts = query_parts[0].split(".")
+            schema = table_name_parts[0]
+            table_name_parts[0] = f'database("{schema}")'
+            query_parts[0] = ".".join(table_name_parts)
 
         return " ".join(query_parts)
 

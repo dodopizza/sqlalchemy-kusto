@@ -173,17 +173,33 @@ def test_schema_from_metadata():
 
 
 def test_schema_from_query():
-    kql_query = "let x = 5; let y = 3; mydb.MyTable | where Field1 == x and Field2 == y"
-    query = select("*").select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry")).limit(5)
+    kql_query = "mydb.MyTable | limit 100"
+    query = select("*").select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
 
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
 
-    query_expected = (
-        "let x = 5;"
-        "let y = 3;"
-        'let inner_qry = (database("mydb").MyTable | where Field1 == x and Field2 == y);'
-        "inner_qry"
-        "| take 5"
-    )
+    query_expected = 'let inner_qry = (database("mydb").MyTable | limit 100);' "inner_qry"
+
+    assert query_compiled == query_expected
+
+
+def test_schema_with_table_name_contains_dots():
+    kql_query = 'mydb."my.table" | limit 100'
+    query = select("*").select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
+
+    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+
+    query_expected = 'let inner_qry = (database("mydb")."my.table" | limit 100);' "inner_qry"
+
+    assert query_compiled == query_expected
+
+
+def test_with_table_name_contains_dots_without_schema():
+    kql_query = '"my.table" | limit 100'
+    query = select("*").select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
+
+    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+
+    query_expected = 'let inner_qry = ("my.table" | limit 100);' "inner_qry"
 
     assert query_compiled == query_expected
