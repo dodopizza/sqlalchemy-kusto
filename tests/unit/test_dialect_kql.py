@@ -1,3 +1,4 @@
+import pytest
 import sqlalchemy as sa
 from sqlalchemy import Column, MetaData, String, Table, column, create_engine, literal_column, select, text
 from sqlalchemy.sql.selectable import TextAsFrom
@@ -145,4 +146,51 @@ def test_quotes():
     )
     # fmt: on
 
+    assert query_compiled == query_expected
+
+
+@pytest.mark.parametrize(
+    "schema_name,table_name,expected_table_name",
+    [
+        ("schema", "table", 'database("schema").table'),
+        ("schema", '"table.name"', 'database("schema")."table.name"'),
+        ('"schema.name"', "table", 'database("schema.name").table'),
+        ('"schema.name"', '"table.name"', 'database("schema.name")."table.name"'),
+        ('"schema name"', '"table name"', 'database("schema name")."table name"'),
+        (None, '"table.name"', '"table.name"'),
+        (None, "MyTable", "MyTable"),
+    ],
+)
+def test_schema_from_metadata(table_name: str, schema_name: str, expected_table_name: str):
+    metadata = MetaData(schema=schema_name) if schema_name else MetaData()
+    stream = Table(
+        table_name,
+        metadata,
+    )
+    query = stream.select().limit(5)
+
+    query_compiled = str(query.compile(engine)).replace("\n", "")
+
+    query_expected = f"{expected_table_name}| take %(param_1)s"
+    assert query_compiled == query_expected
+
+
+@pytest.mark.parametrize(
+    "query_table_name,expected_table_name",
+    [
+        ("schema.table", 'database("schema").table'),
+        ('schema."table.name"', 'database("schema")."table.name"'),
+        ('"schema.name".table', 'database("schema.name").table'),
+        ('"schema.name"."table.name"', 'database("schema.name")."table.name"'),
+        ('"schema name"."table name"', 'database("schema name")."table name"'),
+        ('"table.name"', '"table.name"'),
+        ("MyTable", "MyTable"),
+    ],
+)
+def test_schema_from_query(query_table_name: str, expected_table_name: str):
+    query = select("*").select_from(TextAsFrom(text(query_table_name), ["*"]).alias("inner_qry")).limit(5)
+
+    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+
+    query_expected = f"let inner_qry = ({expected_table_name});inner_qry| take 5"
     assert query_compiled == query_expected

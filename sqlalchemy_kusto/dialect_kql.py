@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List, Optional, Tuple
 
 from sqlalchemy import Column, exc
@@ -60,12 +61,15 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             query = self._get_most_inner_element(from_object.element)
             (main, lets) = self._extract_let_statements(query.text)
             compiled_query_lines.extend(lets)
-            compiled_query_lines.append(f"let {from_object.name} = ({main});")
+            compiled_query_lines.append(f"let {from_object.name} = ({self._convert_schema_in_statement(main)});")
             compiled_query_lines.append(from_object.name)
         elif hasattr(from_object, "name"):
+            if from_object.schema is not None:
+                unquoted_schema = from_object.schema.strip("\"'")
+                compiled_query_lines.append(f'database("{unquoted_schema}").')
             compiled_query_lines.append(from_object.name)
         else:
-            compiled_query_lines.append(from_object.text)
+            compiled_query_lines.append(self._convert_schema_in_statement(from_object.text))
 
         if select._whereclause is not None:
             where_clause = select._whereclause._compiler_dispatch(self, **kwargs)
@@ -144,6 +148,30 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def _build_column_projection(column_name: str, column_alias: str = None):
         """Generates column alias semantic for project statement"""
         return f"{column_alias} = {column_name}" if column_alias else column_name
+
+    @staticmethod
+    def _convert_schema_in_statement(query: str) -> str:
+        """
+        Converts schema in the query from SQL notation to KQL notation. Returns converted query.
+
+        Examples:
+            - schema.table                -> database("schema").table
+            - schema."table.name"         -> database("schema")."table.name"
+            - "schema.name".table         -> database("schema.name").table
+            - "schema.name"."table.name"  -> database("schema.name")."table.name"
+            - "schema name"."table name"  -> database("schema name")."table name"
+            - "table.name"                -> "table.name"
+            - MyTable                     -> MyTable
+        """
+
+        pattern = r"^([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")?\.?([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")"
+        match = re.search(pattern, query)
+
+        if not match or not match.group(1):
+            return query
+
+        unquoted_schema = match.group(1).strip("\"'")
+        return query.replace(query, f'database("{unquoted_schema}").{match.group(2)}', 1)
 
 
 class KustoKqlHttpsDialect(KustoBaseDialect):
