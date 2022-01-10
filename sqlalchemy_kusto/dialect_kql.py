@@ -1,4 +1,5 @@
 import logging
+import re
 from typing import List, Optional, Tuple
 
 from sqlalchemy import Column, exc
@@ -64,7 +65,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             compiled_query_lines.append(from_object.name)
         elif hasattr(from_object, "name"):
             if from_object.schema is not None:
-                compiled_query_lines.append(f'database("{from_object.schema}").')
+                unquoted_schema = from_object.schema.strip('"')
+                compiled_query_lines.append(f'database("{unquoted_schema}").')
             compiled_query_lines.append(from_object.name)
         else:
             compiled_query_lines.append(self._convert_schema_in_statement(from_object.text))
@@ -152,22 +154,24 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         """
         Converts schema in the query from SQL notation to KQL notation. Returns converted query.
 
-        Example:
-            schema.table_name -> database("schema").table_name
+        Examples:
+            - schema.table                -> database("schema").table
+            - schema."table.name"         -> database("schema")."table.name"
+            - "schema.name".table         -> database("schema.name").table
+            - "schema.name"."table.name"  -> database("schema.name")."table.name"
+            - "schema name"."table name"  -> database("schema name")."table name"
+            - "table.name"                -> "table.name"
+            - MyTable                     -> MyTable
         """
-        query_parts = query.split()
 
-        #  We handle the following possible situations here:
-        # - mydb.MyTable    (schema with table name);
-        # - mydb."my.table" (schema with dot-separated table name, it should be quoted by Kusto syntax rules);
-        # - "my.table"      (dot-separated table name without schema)
-        if "." in query_parts[0] and not query_parts[0].startswith('"'):
-            table_name_parts = query_parts[0].split(".")
-            schema = table_name_parts[0]
-            table_name_parts[0] = f'database("{schema}")'
-            query_parts[0] = ".".join(table_name_parts)
+        pattern = r"^([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")?\.?([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")"
+        match = re.search(pattern, query)
 
-        return " ".join(query_parts)
+        if not match or not match.group(1):
+            return query
+
+        unquoted_schema = match.group(1).strip('"')
+        return query.replace(query, f'database("{unquoted_schema}").{match.group(2)}', 1)
 
 
 class KustoKqlHttpsDialect(KustoBaseDialect):
