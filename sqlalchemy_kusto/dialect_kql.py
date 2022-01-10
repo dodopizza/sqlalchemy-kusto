@@ -65,7 +65,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             compiled_query_lines.append(from_object.name)
         elif hasattr(from_object, "name"):
             if from_object.schema is not None:
-                unquoted_schema = from_object.schema.strip('"')
+                unquoted_schema = from_object.schema.strip("\"'")
                 compiled_query_lines.append(f'database("{unquoted_schema}").')
             compiled_query_lines.append(from_object.name)
         else:
@@ -170,7 +170,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         if not match or not match.group(1):
             return query
 
-        unquoted_schema = match.group(1).strip('"')
+        unquoted_schema = match.group(1).strip("\"'")
         return query.replace(query, f'database("{unquoted_schema}").{match.group(2)}', 1)
 
 
