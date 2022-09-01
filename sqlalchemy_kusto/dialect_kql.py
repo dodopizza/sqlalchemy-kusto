@@ -51,12 +51,12 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     ):
         logger.debug("Incoming query: %s", select)
 
-        if len(select.froms) != 1:
+        if len(select.get_final_froms()) != 1:
             raise NotSupportedError('Only single "select from" query is supported in kql compiler')
 
         compiled_query_lines = []
 
-        from_object = select.froms[0]
+        from_object = select.get_final_froms()[0]
         if hasattr(from_object, "element"):
             query = self._get_most_inner_element(from_object.element)
             (main, lets) = self._extract_let_statements(query.text)
@@ -178,3 +178,4 @@ class KustoKqlHttpsDialect(KustoBaseDialect):
     name = "kustokql"
     statement_compiler = KustoKqlCompiler
     preparer = KustoKqlIdentifierPreparer
+    supports_statement_cache = True

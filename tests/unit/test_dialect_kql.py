@@ -25,7 +25,7 @@ def test_compiler_with_projection():
         "let virtual_table = (logs | take 10);"
         "virtual_table"
         "| project id = Id, tId = TypeId, Type"
-        "| take %(param_1)s"
+        "| take __[POSTCOMPILE_param_1]"
     )
 
     assert query_compiled == query_expected
@@ -42,7 +42,7 @@ def test_compiler_with_star():
     query = query.limit(10)
 
     query_compiled = str(query.compile(engine)).replace("\n", "")
-    query_expected = "let virtual_table = (logs | take 10);" "virtual_table" "| take %(param_1)s"
+    query_expected = "let virtual_table = (logs | take 10);" "virtual_table" "| take __[POSTCOMPILE_param_1]"
 
     assert query_compiled == query_expected
 
@@ -67,7 +67,7 @@ def test_use_table():
     query = stream.select().limit(5)
     query_compiled = str(query.compile(engine)).replace("\n", "")
 
-    query_expected = "logs" "| project Field1, Field2" "| take %(param_1)s"
+    query_expected = "logs" "| project Field1, Field2" "| take __[POSTCOMPILE_param_1]"
     assert query_compiled == query_expected
 
 
@@ -142,7 +142,7 @@ def test_quotes():
     query_expected = (
         "logs"
         '| project ["Field1"], ["Field2"]'
-        "| take %(param_1)s"
+        "| take __[POSTCOMPILE_param_1]"
     )
     # fmt: on
 
@@ -171,7 +171,7 @@ def test_schema_from_metadata(table_name: str, schema_name: str, expected_table_
 
     query_compiled = str(query.compile(engine)).replace("\n", "")
 
-    query_expected = f"{expected_table_name}| take %(param_1)s"
+    query_expected = f"{expected_table_name}| take __[POSTCOMPILE_param_1]"
     assert query_compiled == query_expected
 
 
