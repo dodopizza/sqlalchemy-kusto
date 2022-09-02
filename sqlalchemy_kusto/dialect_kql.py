@@ -39,24 +39,24 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     def visit_select(
         self,
-        select: selectable.Select,
+        select_stmt: selectable.Select,
         asfrom=False,
-        parens=True,
+        insert_into=True,
         fromhints=None,
         compound_index: int = 0,
-        nested_join_translation=False,
         select_wraps_for=None,
         lateral=False,
+        from_linter=None,
         **kwargs,
     ):
-        logger.debug("Incoming query: %s", select)
+        logger.debug("Incoming query: %s", select_stmt)
 
-        if len(select.get_final_froms()) != 1:
+        if len(select_stmt.get_final_froms()) != 1:
             raise NotSupportedError('Only single "select from" query is supported in kql compiler')
 
         compiled_query_lines = []
 
-        from_object = select.get_final_froms()[0]
+        from_object = select_stmt.get_final_froms()[0]
         if hasattr(from_object, "element"):
             query = self._get_most_inner_element(from_object.element)
             (main, lets) = self._extract_let_statements(query.text)
@@ -71,19 +71,19 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         else:
             compiled_query_lines.append(self._convert_schema_in_statement(from_object.text))
 
-        if select._whereclause is not None:
-            where_clause = select._whereclause._compiler_dispatch(self, **kwargs)
+        if select_stmt._whereclause is not None:
+            where_clause = select_stmt._whereclause._compiler_dispatch(self, **kwargs)
             if where_clause:
                 compiled_query_lines.append(f"| where {where_clause}")
 
-        projections = self._get_projection_or_summarize(select)
+        projections = self._get_projection_or_summarize(select_stmt)
         if projections:
             compiled_query_lines.append(projections)
 
-        if select._limit_clause is not None:  # pylint: disable=protected-access
+        if select_stmt._limit_clause is not None:  # pylint: disable=protected-access
             kwargs["literal_execute"] = True
             compiled_query_lines.append(
-                f"| take {self.process(select._limit_clause, **kwargs)}"
+                f"| take {self.process(select_stmt._limit_clause, **kwargs)}"
             )  # pylint: disable=protected-access
 
         compiled_query_lines = list(filter(None, compiled_query_lines))
