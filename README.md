@@ -84,6 +84,25 @@ cursor = engine.execute(query)
 print([row for row in cursor])
 ```
 
+### Using with Apache Superset
+
+[Apache Superset](https://github.com/apache/superset) starting from [version 1.5](https://github.com/apache/superset/blob/1c1beb653a52c1fcc67a97e539314f138117c6ba/RELEASING/release-notes-1-5/README.md) also supports Kusto database engine spec. \
+When connecting to a new data source you may choose a data source type either KustoSQL or KustoKQL depending on the dialect you want to use.
+
+There are following connection string formats:
+
+```shell
+# KustoSQL
+kustosql+https://<CLUSTER_URL>/<DATABASE>?azure_ad_client_id=<CLIENT_ID>&azure_ad_client_secret=<CLIENT_SECRET>&azure_ad_tenant_id=<TENANT_ID>&msi=False
+
+# KustoKQL
+kustokql+https://<CLUSTER_URL>/<DATABASE>?azure_ad_client_id=<CLIENT_ID>&azure_ad_client_secret=<CLIENT_SECRET>&azure_ad_tenant_id=<TENANT_ID>&msi=False
+```
+> Important notice on package version compatibility. \
+> Apache Superset stable releases 1.5 and 2.0 dependent on `sqlalchemy==1.3.24`. If you want to use `sqlalchemy-kusto` with these versions you need to install version `1.*` of the package.
+> 
+> Current `master` branch of the `apache/superset` dependent on `sqlalchemy==1.4.36`. If you want to use `sqlalchemy-kusto` with the latest unstable version of `apache/superset`, you need to install version `2.*` of the package.
+
 ## Contributing
 
 Please see the [CONTRIBUTING.md](.github/CONTRIBUTING.md) for development setup and contributing process guidelines.
