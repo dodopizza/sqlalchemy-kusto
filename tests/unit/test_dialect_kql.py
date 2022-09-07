@@ -22,7 +22,7 @@ def test_compiler_with_projection():
 
     query_compiled = str(query.compile(engine)).replace("\n", "")
     query_expected = (
-        "let virtual_table = (logs | take 10);"
+        'let virtual_table = (["logs"] | take 10);'
         "virtual_table"
         "| project id = Id, tId = TypeId, Type"
         "| take __[POSTCOMPILE_param_1]"
@@ -42,7 +42,7 @@ def test_compiler_with_star():
     query = query.limit(10)
 
     query_compiled = str(query.compile(engine)).replace("\n", "")
-    query_expected = "let virtual_table = (logs | take 10);" "virtual_table" "| take __[POSTCOMPILE_param_1]"
+    query_expected = 'let virtual_table = (["logs"] | take 10);' "virtual_table" "| take __[POSTCOMPILE_param_1]"
 
     assert query_compiled == query_expected
 
@@ -50,7 +50,7 @@ def test_compiler_with_star():
 def test_select_from_text():
     query = select([column("Field1"), column("Field2")]).select_from(text("logs")).limit(100)
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
-    query_expected = "logs" "| project Field1, Field2" "| take 100"
+    query_expected = '["logs"]' "| project Field1, Field2" "| take 100"
 
     assert query_compiled == query_expected
 
@@ -67,7 +67,7 @@ def test_use_table():
     query = stream.select().limit(5)
     query_compiled = str(query.compile(engine)).replace("\n", "")
 
-    query_expected = "logs" "| project Field1, Field2" "| take __[POSTCOMPILE_param_1]"
+    query_expected = '["logs"]' "| project Field1, Field2" "| take __[POSTCOMPILE_param_1]"
     assert query_compiled == query_expected
 
 
@@ -78,7 +78,7 @@ def test_limit():
 
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
 
-    query_expected = "let inner_qry = (logs);" "inner_qry" "| take 5"
+    query_expected = 'let inner_qry = (["logs"]);' "inner_qry" "| take 5"
 
     assert query_compiled == query_expected
 
@@ -98,7 +98,7 @@ def test_select_count():
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
 
     query_expected = (
-        "let inner_qry = (logs);"
+        'let inner_qry = (["logs"]);'
         "inner_qry"
         "| where Field1 > 1 and Field2 < 2"
         "| summarize count = count()"
@@ -117,7 +117,7 @@ def test_select_with_let():
     query_expected = (
         "let x = 5;"
         "let y = 3;"
-        "let inner_qry = (MyTable | where Field1 == x and Field2 == y);"
+        'let inner_qry = (["MyTable"] | where Field1 == x and Field2 == y);'
         "inner_qry"
         "| take 5"
     )
@@ -140,7 +140,7 @@ def test_quotes():
 
     # fmt: off
     query_expected = (
-        "logs"
+        '["logs"]'
         '| project ["Field1"], ["Field2"]'
         "| take __[POSTCOMPILE_param_1]"
     )
@@ -152,13 +152,13 @@ def test_quotes():
 @pytest.mark.parametrize(
     "schema_name,table_name,expected_table_name",
     [
-        ("schema", "table", 'database("schema").table'),
-        ("schema", '"table.name"', 'database("schema")."table.name"'),
-        ('"schema.name"', "table", 'database("schema.name").table'),
-        ('"schema.name"', '"table.name"', 'database("schema.name")."table.name"'),
-        ('"schema name"', '"table name"', 'database("schema name")."table name"'),
-        (None, '"table.name"', '"table.name"'),
-        (None, "MyTable", "MyTable"),
+        ("schema", "table", 'database("schema").["table"]'),
+        ("schema", '"table.name"', 'database("schema").["table.name"]'),
+        ('"schema.name"', "table", 'database("schema.name").["table"]'),
+        ('"schema.name"', '"table.name"', 'database("schema.name").["table.name"]'),
+        ('"schema name"', '"table name"', 'database("schema name").["table name"]'),
+        (None, '"table.name"', '["table.name"]'),
+        (None, "MyTable", '["MyTable"]'),
     ],
 )
 def test_schema_from_metadata(table_name: str, schema_name: str, expected_table_name: str):
@@ -178,14 +178,14 @@ def test_schema_from_metadata(table_name: str, schema_name: str, expected_table_
 @pytest.mark.parametrize(
     "query_table_name,expected_table_name",
     [
-        ("schema.table", 'database("schema").table'),
-        ('schema."table.name"', 'database("schema")."table.name"'),
-        ('"schema.name".table', 'database("schema.name").table'),
-        ('"schema.name"."table.name"', 'database("schema.name")."table.name"'),
-        ('"schema name"."table name"', 'database("schema name")."table name"'),
-        ('"table.name"', '"table.name"'),
-        ("MyTable", "MyTable"),
-        ('["schema"].["table"]', 'database("schema")."table"'),
+        ("schema.table", 'database("schema").["table"]'),
+        ('schema."table.name"', 'database("schema").["table.name"]'),
+        ('"schema.name".table', 'database("schema.name").["table"]'),
+        ('"schema.name"."table.name"', 'database("schema.name").["table.name"]'),
+        ('"schema name"."table name"', 'database("schema name").["table name"]'),
+        ('"table.name"', '["table.name"]'),
+        ("MyTable", '["MyTable"]'),
+        ('["schema"].["table"]', 'database("schema").["table"]'),
         ('["table"]', '["table"]'),
     ],
 )

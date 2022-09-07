@@ -67,7 +67,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             if from_object.schema is not None:
                 unquoted_schema = from_object.schema.strip("\"'")
                 compiled_query_lines.append(f'database("{unquoted_schema}").')
-            compiled_query_lines.append(from_object.name)
+            unquoted_name = from_object.name.strip("\"'")
+            compiled_query_lines.append(f'["{unquoted_name}"]')
         else:
             compiled_query_lines.append(self._convert_schema_in_statement(from_object.text))
 
@@ -155,23 +156,30 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         Converts schema in the query from SQL notation to KQL notation. Returns converted query.
 
         Examples:
-            - schema.table                -> database("schema").table
-            - schema."table.name"         -> database("schema")."table.name"
-            - "schema.name".table         -> database("schema.name").table
-            - "schema.name"."table.name"  -> database("schema.name")."table.name"
-            - "schema name"."table name"  -> database("schema name")."table name"
-            - "table.name"                -> "table.name"
-            - MyTable                     -> MyTable
+            - schema.table                -> database("schema").["table"]
+            - schema."table.name"         -> database("schema").{"table.name"]
+            - "schema.name".table         -> database("schema.name").["table"]
+            - "schema.name"."table.name"  -> database("schema.name").["table.name"]
+            - "schema name"."table name"  -> database("schema name").["table name"]
+            - "table.name"                -> ["table.name"]
+            - MyTable                     -> ["MyTable"]
+            - ["schema"].["table"]        -> database("schema").["table"]
+            - ["table"]                   -> ["table"]
         """
 
         pattern = r"^\[?([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")?\]?\.?\[?([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")\]?"
         match = re.search(pattern, query)
-
-        if not match or not match.group(1):
+        if not match:
             return query
 
+        original = match.group(0)
+        unquoted_table = match.group(2).strip("\"'")
+
+        if not match.group(1):
+            return query.replace(original, f'["{unquoted_table}"]', 1)
+
         unquoted_schema = match.group(1).strip("\"'")
-        return query.replace(query, f'database("{unquoted_schema}").{match.group(2)}', 1)
+        return query.replace(original, f'database("{unquoted_schema}").["{unquoted_table}"]', 1)
 
 
 class KustoKqlHttpsDialect(KustoBaseDialect):
