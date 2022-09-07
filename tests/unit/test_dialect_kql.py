@@ -185,6 +185,8 @@ def test_schema_from_metadata(table_name: str, schema_name: str, expected_table_
         ('"schema name"."table name"', 'database("schema name")."table name"'),
         ('"table.name"', '"table.name"'),
         ("MyTable", "MyTable"),
+        ('["schema"].["table"]', 'database("schema")."table"'),
+        ('["table"]', '["table"]'),
     ],
 )
 def test_schema_from_query(query_table_name: str, expected_table_name: str):

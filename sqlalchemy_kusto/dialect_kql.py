@@ -164,7 +164,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             - MyTable                     -> MyTable
         """
 
-        pattern = r"^([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")?\.?([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")"
+        pattern = r"^\[?([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")?\]?\.?\[?([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")\]?"
         match = re.search(pattern, query)
 
         if not match or not match.group(1):
