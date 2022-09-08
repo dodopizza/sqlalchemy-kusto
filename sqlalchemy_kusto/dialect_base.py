@@ -124,7 +124,7 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         result = connection.execute(".show materialized-views | project Name")
         return [row.Name for row in result]
 
-    def get_pk_constraint(self, conn: Connection, table_name: str, schema: Optional[str] = None, **kw):
+    def get_pk_constraint(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw):
         return {"constrained_columns": [], "name": None}
 
     def get_foreign_keys(self, connection, table_name, schema=None, **kwargs):

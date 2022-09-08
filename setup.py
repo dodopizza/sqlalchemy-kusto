@@ -2,11 +2,12 @@ from setuptools import find_packages, setup
 
 NAME = "sqlalchemy-kusto"
 DESCRIPTION = "Azure Data Explorer (Kusto) dialect for SQLAlchemy"
-VERSION = "1.1.0"
+VERSION = "2.0.0"
 
 REQUIREMENTS = [
-    "azure-kusto-data==2.1.1",
-    "sqlalchemy==1.3.24",
+    "azure-kusto-data==3.*",
+    "sqlalchemy==1.4.*",
+    "typing-extensions~=3.10",
 ]
 EXTRAS = {
     "dev": [
