@@ -13,8 +13,8 @@ EXTRAS = {
     "dev": [
         "black>=21.12b0",
         "isort>=5.10.1",
-        "mypy>=0.9.30",
-        "pylint>=2.12.2",
+        "mypy==0.971",
+        "pylint==2.15.0",
         "pytest>=6.2.5",
         "python-dotenv>=0.19.2",
     ]
