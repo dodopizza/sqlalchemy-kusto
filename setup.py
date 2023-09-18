@@ -7,7 +7,7 @@ VERSION = "2.0.0"
 REQUIREMENTS = [
     "azure-kusto-data==3.*",
     "sqlalchemy==1.4.*",
-    "typing-extensions~=3.10",
+    "typing-extensions>=3.10",
 ]
 EXTRAS = {
     "dev": [
