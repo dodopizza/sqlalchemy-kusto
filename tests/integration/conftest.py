@@ -10,7 +10,7 @@ load_dotenv()
 AZURE_AD_CLIENT_ID = os.environ.get("AZURE_AD_CLIENT_ID", "")
 AZURE_AD_CLIENT_SECRET = os.environ.get("AZURE_AD_CLIENT_SECRET", "")
 AZURE_AD_TENANT_ID = os.environ.get("AZURE_AD_TENANT_ID", "")
-KUSTO_URL = os.environ.get("KUSTO_URL", "https://sdktestcluster.southeastasia.dev.kusto.windows.net")
+KUSTO_URL = os.environ["KUSTO_URL"]
 KUSTO_SQL_ALCHEMY_URL = "kustosql+" + KUSTO_URL
 KUSTO_KQL_ALCHEMY_URL = "kustokql+" + KUSTO_URL
-DATABASE = os.environ.get("DATABASE", "e2e")
+DATABASE = os.environ["DATABASE"]
