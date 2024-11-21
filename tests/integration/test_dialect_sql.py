@@ -32,6 +32,10 @@ def test_get_table_names(temp_table_name):
     result = engine.dialect.get_table_names(conn)
     assert temp_table_name in result
 
+def test_get_view_names(temp_table_name):
+    conn = engine.connect()
+    result = engine.dialect.get_view_names(conn)
+    assert f"{temp_table_name}_fn" in result
 
 def test_get_columns(temp_table_name):
     conn = engine.connect()
@@ -77,19 +81,28 @@ def test_limit(temp_table_name):
     assert result_length == 5
 
 
-def _create_temp_table(table_name: str):
-    kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(
-        KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
+def get_kcsb():
+    return (
+        KustoConnectionStringBuilder.with_az_cli_authentication(KUSTO_URL)
+        if not AZURE_AD_CLIENT_ID and not AZURE_AD_CLIENT_SECRET and not AZURE_AD_TENANT_ID
+        else KustoConnectionStringBuilder.with_aad_application_key_authentication(
+            KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
+        )
     )
-    client = KustoClient(kcsb)
+
+
+def _create_temp_table(table_name: str):
+    client = KustoClient(get_kcsb())
     response = client.execute(DATABASE, f".create table {table_name}(Id: int, Text: string)", ClientRequestProperties())
 
 
+def _create_temp_fn(fn_name: str):
+    client = KustoClient(get_kcsb())
+    response = client.execute(DATABASE, f".create function {fn_name}() {{ print now()}}", ClientRequestProperties())
+
+
 def _ingest_data_to_table(table_name: str):
-    kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(
-        KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
-    )
-    client = KustoClient(kcsb)
+    client = KustoClient(get_kcsb())
     data_to_ingest = {i: "value_" + str(i) for i in range(1, 10)}
     str_data = "\n".join("{},{}".format(*p) for p in data_to_ingest.items())
     ingest_query = f""".ingest inline into table {table_name} <|
@@ -98,12 +111,10 @@ def _ingest_data_to_table(table_name: str):
 
 
 def _drop_table(table_name: str):
-    kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(
-        KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
-    )
-    client = KustoClient(kcsb)
+    client = KustoClient(get_kcsb())
 
-    response = client.execute(DATABASE, f".drop table {table_name}", ClientRequestProperties())
+    _ = client.execute(DATABASE, f".drop table {table_name}", ClientRequestProperties())
+    _ = client.execute(DATABASE, f".drop function {table_name}_fn", ClientRequestProperties())
 
 
 @pytest.fixture()
@@ -114,6 +125,7 @@ def temp_table_name():
 @pytest.fixture(autouse=True)
 def run_around_tests(temp_table_name):
     _create_temp_table(temp_table_name)
+    _create_temp_fn(f"{temp_table_name}_fn")
     _ingest_data_to_table(temp_table_name)
     # A test function will be run at this point
     yield temp_table_name

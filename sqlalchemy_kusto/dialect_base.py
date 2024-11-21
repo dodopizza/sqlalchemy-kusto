@@ -117,19 +117,13 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
                 query_result = connection.execute(function_schema)
                 rows = list(query_result)
                 entity_schema = json.loads(rows[0].Schema)
-                return [
-                    self.schema_definition(column)
-                    for column in entity_schema["OutputColumns"]
-                ]
+                return [self.schema_definition(column) for column in entity_schema["OutputColumns"]]
         entity_type = "table" if table_search_result.rowcount == 1 else "materialized-view"
         query = f".show {entity_type} {table_name} schema as json"
         query_result = connection.execute(query)
         rows = list(query_result)
         entity_schema = json.loads(rows[0].Schema)
-        return [
-            self.schema_definition(column)
-            for column in entity_schema["OrderedColumns"]
-        ]
+        return [self.schema_definition(column) for column in entity_schema["OrderedColumns"]]
 
     @staticmethod
     def schema_definition(column):
@@ -145,7 +139,7 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         # Functions are also Views.
         # Filtering no input functions specifically here as there is no way to pass parameters today
         functions = connection.execute(".show functions | where Parameters =='()' | project Name")
-        mv =  [row.Name for row in mvs]
+        mv = [row.Name for row in mvs]
         view = [row.Name for row in functions]
         return mv + view
 
