@@ -76,7 +76,7 @@ class Connection:
         else:
             # neither SP or MSI
             kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
-
+        kcsb._set_connector_details("sqlalchemy-kusto", "0.1.0")  # pylint: disable=protected-access
         self.kusto_client = KustoClient(kcsb)
         self.database = database
         self.properties = ClientRequestProperties()
