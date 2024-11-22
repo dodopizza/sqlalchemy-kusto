@@ -135,13 +135,13 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         }
 
     def get_view_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
-        mvs = connection.execute(".show materialized-views | project Name")
+        materialized_views = connection.execute(".show materialized-views | project Name")
         # Functions are also Views.
         # Filtering no input functions specifically here as there is no way to pass parameters today
         functions = connection.execute(".show functions | where Parameters =='()' | project Name")
-        mv = [row.Name for row in mvs]
+        materialized_view = [row.Name for row in materialized_views]
         view = [row.Name for row in functions]
-        return mv + view
+        return materialized_view + view
 
     def get_pk_constraint(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw):
         return {"constrained_columns": [], "name": None}

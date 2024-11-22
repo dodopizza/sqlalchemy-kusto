@@ -32,10 +32,12 @@ def test_get_table_names(temp_table_name):
     result = engine.dialect.get_table_names(conn)
     assert temp_table_name in result
 
+
 def test_get_view_names(temp_table_name):
     conn = engine.connect()
     result = engine.dialect.get_view_names(conn)
     assert f"{temp_table_name}_fn" in result
+
 
 def test_get_columns(temp_table_name):
     conn = engine.connect()

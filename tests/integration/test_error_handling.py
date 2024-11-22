@@ -7,8 +7,8 @@ from tests.integration.conftest import DATABASE, KUSTO_SQL_ALCHEMY_URL
 
 def test_operational_error():
     wrong_tenant_id = "wrong_tenant_id"
-    azure_ad_client_id="x"
-    azure_ad_client_secret="x"
+    azure_ad_client_id = "x"
+    azure_ad_client_secret = "x"
     engine = create_engine(
         f"{KUSTO_SQL_ALCHEMY_URL}/{DATABASE}?"
         f"msi=False&azure_ad_client_id={azure_ad_client_id}&"
