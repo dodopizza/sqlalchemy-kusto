@@ -40,15 +40,7 @@ def connect(
     azure_ad_tenant_id: str = None,
 ):
     """Return a connection to the database."""
-    return Connection(
-        cluster,
-        database,
-        msi,
-        user_msi,
-        azure_ad_client_id,
-        azure_ad_client_secret,
-        azure_ad_tenant_id,
-    )
+    return Connection(cluster, database, msi, user_msi, azure_ad_client_id, azure_ad_client_secret, azure_ad_tenant_id)
 
 
 class Connection:
@@ -68,12 +60,7 @@ class Connection:
         self.cursors: List[Cursor] = []
         kcsb = None
 
-        if msi:
-            # Managed Service Identity (MSI)
-            kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
-                cluster, client_id=user_msi
-            )
-        else:
+        if azure_ad_client_id and azure_ad_client_secret and azure_ad_tenant_id:
             # Service Principal auth
             kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(
                 connection_string=cluster,
@@ -81,7 +68,15 @@ class Connection:
                 app_key=azure_ad_client_secret,
                 authority_id=azure_ad_tenant_id,
             )
-
+        elif msi:
+            # Managed Service Identity (MSI)
+            kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
+                cluster, client_id=user_msi
+            )
+        else:
+            # neither SP or MSI
+            kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
+        kcsb._set_connector_details("sqlalchemy-kusto", "0.1.0")  # pylint: disable=protected-access
         self.kusto_client = KustoClient(kcsb)
         self.database = database
         self.properties = ClientRequestProperties()
@@ -89,7 +84,7 @@ class Connection:
     @check_closed
     def close(self):
         """Close the connection now. Kusto does not require to close the connection."""
-        self.closed = True
+        # self.closed = True
         for cursor in self.cursors:
             cursor.close()
 
@@ -157,7 +152,7 @@ class Cursor:
     @check_closed
     def close(self):
         """Closes the cursor."""
-        self.closed = True
+        # self.closed = True
 
     @check_closed
     def execute(self, operation, parameters=None) -> "Cursor":

@@ -62,6 +62,7 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         "azure_ad_client_secret": str,
         "azure_ad_tenant_id": str,
         "user_msi": str,
+        "dev_mode": parse_bool_argument,
     }
 
     @classmethod
@@ -102,27 +103,45 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
             .show tables
             | where TableName == "{table_name}"
         """
+        function_search_query = f"""
+            .show functions
+            | where Name == "{table_name}"
+        """
         table_search_result = connection.execute(table_search_query)
-        entity_type = "table" if table_search_result.rowcount == 1 else "materialized-view"
 
+        # Add Functions as View as well. Retrieve the schema of the table
+        if table_search_result.rowcount == 0:
+            function_search_result = connection.execute(function_search_query)
+            if function_search_result.rowcount == 1:
+                function_schema = f".show function {table_name} schema as json"
+                query_result = connection.execute(function_schema)
+                rows = list(query_result)
+                entity_schema = json.loads(rows[0].Schema)
+                return [self.schema_definition(column) for column in entity_schema["OutputColumns"]]
+        entity_type = "table" if table_search_result.rowcount == 1 else "materialized-view"
         query = f".show {entity_type} {table_name} schema as json"
         query_result = connection.execute(query)
         rows = list(query_result)
         entity_schema = json.loads(rows[0].Schema)
+        return [self.schema_definition(column) for column in entity_schema["OrderedColumns"]]
 
-        return [
-            {
-                "name": column["Name"],
-                "type": kql_to_sql_types[column["CslType"].lower()],
-                "nullable": True,
-                "default": "",
-            }
-            for column in entity_schema["OrderedColumns"]
-        ]
+    @staticmethod
+    def schema_definition(column):
+        return {
+            "name": column["Name"],
+            "type": kql_to_sql_types[column["CslType"].lower()],
+            "nullable": True,
+            "default": "",
+        }
 
     def get_view_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
-        result = connection.execute(".show materialized-views | project Name")
-        return [row.Name for row in result]
+        materialized_views = connection.execute(".show materialized-views | project Name")
+        # Functions are also Views.
+        # Filtering no input functions specifically here as there is no way to pass parameters today
+        functions = connection.execute(".show functions | where Parameters =='()' | project Name")
+        materialized_view = [row.Name for row in materialized_views]
+        view = [row.Name for row in functions]
+        return materialized_view + view
 
     def get_pk_constraint(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw):
         return {"constrained_columns": [], "name": None}

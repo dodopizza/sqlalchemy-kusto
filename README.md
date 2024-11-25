@@ -37,6 +37,7 @@ connection = connect(
         azure_ad_client_id=kusto_client_id,
         azure_ad_client_secret=kusto_client_secret,
         azure_ad_tenant_id=kusto_tenant_id,
+        dev_mode=False
 )
 
 result = connection.execute(f"select 1").fetchall()
@@ -51,7 +52,8 @@ engine = create_engine(
     f"kustosql+{kusto_url}/{database_name}?"
     f"msi=False&azure_ad_client_id={kusto_client_id}&"
     f"azure_ad_client_secret={kusto_client_secret}&"
-    f"azure_ad_tenant_id={kusto_tenant_id}"
+    f"azure_ad_tenant_id={kusto_tenant_id}&"
+    f"dev_mode=False"
 )
 engine.connect()
 cursor = engine.execute(f"select top 1")
