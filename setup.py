@@ -2,7 +2,8 @@ from setuptools import find_packages, setup
 
 NAME = "sqlalchemy-kusto"
 DESCRIPTION = "Azure Data Explorer (Kusto) dialect for SQLAlchemy"
-VERSION = "2.0.2"
+VERSION = "3.0.0"
+
 
 REQUIREMENTS = [
     "azure-kusto-data==4.*",
@@ -50,7 +51,7 @@ setup(
     project_urls={
         "Bug Tracker": "https://github.com/dodopizza/sqlalchemy-kusto/issues",
     },
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     version=VERSION,
     zip_safe=False,
 )
