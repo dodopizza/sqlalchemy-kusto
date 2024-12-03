@@ -138,7 +138,7 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         materialized_views = connection.execute(".show materialized-views | project Name")
         # Functions are also Views.
         # Filtering no input functions specifically here as there is no way to pass parameters today
-        functions = connection.execute(".show functions | where Parameters =='()' | project Name")
+        functions = connection.execute(".show functions | project Name")
         materialized_view = [row.Name for row in materialized_views]
         view = [row.Name for row in functions]
         return materialized_view + view

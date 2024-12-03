@@ -90,7 +90,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         compiled_query_lines = list(filter(None, compiled_query_lines))
 
         compiled_query = "\n".join(compiled_query_lines)
-        logger.debug("Compiled query: %s", compiled_query)
+        logger.warning("Compiled query: %s", compiled_query)
         return compiled_query
 
     def limit_clause(self, select, **kw):
@@ -141,8 +141,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     @staticmethod
     def _extract_column_name_and_alias(column: Column) -> Tuple[str, Optional[str]]:
         if hasattr(column, "element"):
-            return column.element.name, column.name
 
+            return re.sub(r'"([^"]+)"', r'["\1"]', str(column.element)), column.name
         return column.name, None
 
     @staticmethod

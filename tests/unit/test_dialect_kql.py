@@ -24,7 +24,7 @@ def test_compiler_with_projection():
     query_expected = (
         'let virtual_table = (["logs"] | take 10);'
         "virtual_table"
-        "| project id = Id, tId = TypeId, Type"
+        '| project id = ["Id"], tId = ["TypeId"], Type'
         "| take __[POSTCOMPILE_param_1]"
     )
 
@@ -52,6 +52,26 @@ def test_select_from_text():
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
     query_expected = '["logs"]' "| project Field1, Field2" "| take 100"
 
+    assert query_compiled == query_expected
+
+
+def test_group_by_text():
+    # create a query from select_query_text creating clause
+    # query = (select(column("EventInfo_Time/time(1d)").label("EventInfo_Time"), column("ActiveUsers").label("ActiveUserMetric"))
+    txt = text('"EventInfo_Time" / time(1d) AS "EventInfo_Time", ActiveUsers AS "ActiveUserMetric" ')
+
+    event_col = literal_column('"EventInfo_Time" / time(1d)').label("EventInfo_Time")
+    active_users_col = literal_column("ActiveUsers").label("ActiveUserMetric")
+    query = (
+        select([event_col, active_users_col])
+        .select_from(text("ActiveUsersLastMonth"))
+        .group_by(literal_column('"EventInfo_Time" / time(1d)'))
+        .order_by(text("ActiveUserMetric DESC"))
+    )
+
+    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    # raw query text from query
+    query_expected = """["ActiveUsersLastMonth"]| project EventInfo_Time = ["EventInfo_Time"] / time(1d), ActiveUserMetric = ActiveUsers"""
     assert query_compiled == query_expected
 
 
