@@ -1,7 +1,9 @@
 import pytest
 import sqlalchemy as sa
-from sqlalchemy import Column, MetaData, String, Table, column, create_engine, literal_column, select, text
+from sqlalchemy import Column, MetaData, String, Table, column, create_engine, distinct, literal_column, select, text
 from sqlalchemy.sql.selectable import TextAsFrom
+
+from sqlalchemy_kusto.dialect_kql import KustoKqlCompiler
 
 engine = create_engine("kustokql+https://localhost/testdb")
 
@@ -57,7 +59,6 @@ def test_select_from_text():
 
 def test_group_by_text():
     # create a query from select_query_text creating clause
-    # query = (select(column("EventInfo_Time/time(1d)").label("EventInfo_Time"), column("ActiveUsers").label("ActiveUserMetric"))
     txt = text('"EventInfo_Time" / time(1d) AS "EventInfo_Time", ActiveUsers AS "ActiveUserMetric" ')
 
     event_col = literal_column('"EventInfo_Time" / time(1d)').label("EventInfo_Time")
@@ -73,6 +74,40 @@ def test_group_by_text():
     # raw query text from query
     query_expected = """["ActiveUsersLastMonth"]| project EventInfo_Time = ["EventInfo_Time"] / time(1d), ActiveUserMetric = ActiveUsers"""
     assert query_compiled == query_expected
+
+
+def test_distinct_count_by_text():
+    # create a query from select_query_text creating clause
+    # 'SELECT "EventInfo_Time" / time(1d) AS "EventInfo_Time", count(DISTINCT ActiveUsers) AS "DistinctUsers"
+    # FROM ActiveUsersLastMonth GROUP BY "EventInfo_Time" / time(1d) ORDER BY ActiveUserMetric DESC'
+    event_col = literal_column('"EventInfo_Time" / time(1d)').label("EventInfo_Time")
+    active_users_col = literal_column("ActiveUsers")
+    query = (
+        select([event_col, sa.func.count(distinct(active_users_col)).label("DistinctUsers")])
+        .select_from(text("ActiveUsersLastMonth"))
+        .group_by(literal_column('"EventInfo_Time" / time(1d)'))
+        .order_by(text("ActiveUserMetric DESC"))
+    )
+    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    # raw query text from query
+    query_expected = (
+        '["ActiveUsersLastMonth"] | summarize DistinctUsers = dcount(ActiveUsers)  by '
+        '["EventInfo_Time"] / time(1d)| project EventInfo_Time = ["EventInfo_Time"] / time(1d), DistinctUsers'
+    )
+    assert query_compiled == query_expected
+
+
+def test_sql_to_kql_aggregate():
+    assert KustoKqlCompiler._sql_to_kql_aggregate("count(*)") == "count()"
+    assert KustoKqlCompiler._sql_to_kql_aggregate("count", "UserId") == "count(UserId)"
+    assert (
+        KustoKqlCompiler._sql_to_kql_aggregate("count(distinct", "CustomerId", is_distinct=True) == "dcount(CustomerId)"
+    )
+    assert KustoKqlCompiler._sql_to_kql_aggregate("sum", "Sales") == "sum(Sales)"
+    assert KustoKqlCompiler._sql_to_kql_aggregate("avg", "ResponseTime") == "avg(ResponseTime)"
+    assert KustoKqlCompiler._sql_to_kql_aggregate("min", "Size") == "min(Size)"
+    assert KustoKqlCompiler._sql_to_kql_aggregate("max", "Area") == "max(Area)"
+    assert KustoKqlCompiler._sql_to_kql_aggregate("unknown", "Column") is None
 
 
 def test_use_table():
@@ -120,8 +155,9 @@ def test_select_count():
     query_expected = (
         'let inner_qry = (["logs"]);'
         "inner_qry"
-        "| where Field1 > 1 and Field2 < 2"
-        "| summarize count = count()"
+        "| where Field1 > 1 and Field2 < 2 "
+        "| summarize count = count()  "
+        "| project count"
         "| take 5"
     )
 

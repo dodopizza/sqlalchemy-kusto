@@ -12,12 +12,12 @@ REQUIREMENTS = [
 ]
 EXTRAS = {
     "dev": [
-        "black>=21.12b0",
-        "isort>=5.10.1",
-        "mypy==0.971",
-        "pylint==2.15.0",
-        "pytest>=6.2.5",
-        "python-dotenv>=0.19.2",
+        "black>=24.10.0",
+        "isort>=5.13.2",
+        "mypy==1.13.0",
+        "pylint==3.3.2",
+        "pytest>=8.3.4",
+        "python-dotenv>=1.0.1",
     ]
 }
 
