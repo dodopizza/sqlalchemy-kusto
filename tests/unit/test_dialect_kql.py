@@ -26,7 +26,7 @@ def test_compiler_with_projection():
     query_expected = (
         'let virtual_table = (["logs"] | take 10);'
         "virtual_table"
-        '| extend Type = ["Type"], id = ["Id"], tId = ["TypeId"] '
+        '| extend id = ["Id"], tId = ["TypeId"] '
         '| project ["Type"], ["id"], ["tId"]'
         "| take __[POSTCOMPILE_param_1]"
     )
@@ -54,7 +54,7 @@ def test_select_from_text():
     query = select([column("Field1"), column("Field2")]).select_from(text("logs")).limit(100)
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
     query_expected = (
-        '["logs"]| extend Field1 = ["Field1"], Field2 = ["Field2"] | project ["Field1"], ["Field2"]| take 100'
+        '["logs"]| project ["Field1"], ["Field2"]| take 100'
     )
 
     assert query_compiled == query_expected
@@ -166,7 +166,6 @@ def test_use_table():
 
     query_expected = (
         '["logs"]'
-        '| extend Field1 = ["Field1"], Field2 = ["Field2"] '
         '| project ["Field1"], ["Field2"]| take __[POSTCOMPILE_param_1]'
     )
     assert query_compiled == query_expected
@@ -243,7 +242,6 @@ def test_quotes():
     # fmt: off
     query_expected = (
         '["logs"]'
-        '| extend ["Field1"] = ["Field1"], ["Field2"] = ["Field2"] '
         '| project ["Field1"], ["Field2"]'
         "| take __[POSTCOMPILE_param_1]"
     )

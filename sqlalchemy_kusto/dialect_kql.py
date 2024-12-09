@@ -126,6 +126,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             extend_columns = set()
             projection_columns = set()
             by_columns = set()
+            alias_name_map = {}
             for column in [c for c in columns if c.name != "*"]:
                 column_name, column_alias = self._extract_column_name_and_alias(column)
                 # Do we have a group by clause ?
@@ -133,6 +134,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 # Do we have aggregate columns ?
                 if match_agg_cols:
                     aggregate_func, distinct_keyword, agg_column_name = match_agg_cols.groups()
+                    # Check if the aggregate function is count_distinct. This is case from superset
+                    # where we can use count(distinct or count_distinct)
                     is_distinct = bool(distinct_keyword) or aggregate_func.casefold() == "count_distinct"
                     kql_agg = self._sql_to_kql_aggregate(aggregate_func, agg_column_name, is_distinct)
                     summarize_columns.add(self._build_column_projection(kql_agg, column_alias))
@@ -143,6 +146,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     # Do the columns have aliases ?
                     if column_alias:
                         extend_columns.add(self._build_column_projection(column_name, column_alias, True))
+                        alias_name_map[column_alias] = column_name
                         projection_columns.add(self._escape_and_quote_columns(column_alias))
                     else:
                         projection_columns.add(self._build_column_projection(column_name, column_alias, True))
@@ -157,6 +161,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 projection_statement = f"| summarize {', '.join(sorted(summarize_columns))} "
                 if by_columns:
                     by_columns_escaped = [self._escape_and_quote_columns(c) for c in by_columns]
+                    projection_columns.add(*by_columns_escaped)
                     projection_statement = f"{projection_statement} by {', '.join(sorted(by_columns_escaped))}"
             if extend_columns:
                 # escape each column with _escape_and_quote_columns
@@ -164,6 +169,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 projection_statement = f"{projection_statement} {extend}" if projection_statement else extend
 
             if projection_columns:
+                for column_alias in alias_name_map:
+                    if projection_columns.__contains__(self._escape_and_quote_columns(column_alias)):
+                        projection_columns.discard(self._escape_and_quote_columns(alias_name_map[column_alias]))
                 # escape each column with _escape_and_quote_columns
                 project = (
                     f"| project {', '.join(sorted(projection_columns, key=lambda x: x.split('=')[0], reverse=False))}"
@@ -195,7 +203,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     return f'["{col_part}"] {operator} {parts[1].strip()}'  # Wrap the column part
             else:
                 # No operators found, just wrap the entire name
-
                 return f'["{name}"]'
 
     def _get_most_inner_element(self, clause):
@@ -223,7 +230,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         if hasattr(column, "element"):
             return str(column.element), column.name
         elif hasattr(column, "name"):
-            return str(column.name), column.name
+            return str(column.name), None
         else:
             return str(column), None
 
