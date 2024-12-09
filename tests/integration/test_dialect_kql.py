@@ -53,27 +53,27 @@ def test_group_by(temp_table_name):
     assert set([(x[1], x[0]) for x in result.fetchall()]) == set([(5, "value_1"), (4, "value_0")])
 
 
-# def test_group_by_advanced(temp_table_name):
-#     kql_engine.connect()
-#     result = kql_engine.execute(f"""
-#     SELECT
-#         CASE
-#             WHEN Id % 6 = 0 THEN 'fizzbuzz'
-#             WHEN Id % 3 = 0 THEN 'fizz'
-#             WHEN Id % 2 = 0 THEN 'buzz'
-#             ELSE 'NoCandy'
-#             END AS FizzBuzz , COUNT(Id) AS C
-#     FROM {temp_table_name} GROUP BY
-#         CASE
-#             WHEN Id % 6 = 0 THEN 'fizzbuzz'
-#             WHEN Id % 3 = 0 THEN 'fizz'
-#             WHEN Id % 2 = 0 THEN 'buzz'
-#             ELSE 'NoCandy'
-#             END
-#     ORDER BY FizzBuzz
-# """)
-#     # There is Even and Empty only for this test, 2 distinct values
-#     assert set([(x[0], x[1]) for x in result.fetchall()]) == set([("NoCandy",3), ("buzz",3), ("fizz",3),("fizzbuzz",3)])
+def test_group_by_advanced(temp_table_name):
+    kql_engine.connect()
+    result = kql_engine.execute(f"""
+    SELECT
+        CASE
+            WHEN Id % 6 = 0 THEN 'fizzbuzz'
+            WHEN Id % 3 = 0 THEN 'fizz'
+            WHEN Id % 2 = 0 THEN 'buzz'
+            ELSE 'NoCandy'
+            END AS FizzBuzz , COUNT(Id) AS C
+    FROM {temp_table_name} GROUP BY
+        CASE
+            WHEN Id % 6 = 0 THEN 'fizzbuzz'
+            WHEN Id % 3 = 0 THEN 'fizz'
+            WHEN Id % 2 = 0 THEN 'buzz'
+            ELSE 'NoCandy'
+            END
+    ORDER BY FizzBuzz
+""")
+    # There is Even and Empty only for this test, 2 distinct values
+    assert set([(x[0], x[1]) for x in result.fetchall()]) == set([("NoCandy",3), ("buzz",3), ("fizz",3),("fizzbuzz",3)])
 
 
 # def test_limit(temp_table_name):
