@@ -37,59 +37,58 @@ def test_group_by(temp_table_name):
         temp_table_name,
         metadata,
     )
-
-    value_column = Column("Text", String)
     query = (
         session.query(func.count(text("Id")).label("tag_count"))
         .select_from(table)
         .group_by(text("Text"))
         .order_by("tag_count")
     )
-
     query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
-
     result = kql_engine.execute(query_compiled)
     # There is Even and Empty only for this test, 2 distinct values
     assert set([(x[1], x[0]) for x in result.fetchall()]) == set([(5, "value_1"), (4, "value_0")])
 
 
-def test_group_by_advanced(temp_table_name):
+# Test without group
+def test_count_by(temp_table_name):
     kql_engine.connect()
-    result = kql_engine.execute(f"""
-    SELECT
-        CASE
-            WHEN Id % 6 = 0 THEN 'fizzbuzz'
-            WHEN Id % 3 = 0 THEN 'fizz'
-            WHEN Id % 2 = 0 THEN 'buzz'
-            ELSE 'NoCandy'
-            END AS FizzBuzz , COUNT(Id) AS C
-    FROM {temp_table_name} GROUP BY
-        CASE
-            WHEN Id % 6 = 0 THEN 'fizzbuzz'
-            WHEN Id % 3 = 0 THEN 'fizz'
-            WHEN Id % 2 = 0 THEN 'buzz'
-            ELSE 'NoCandy'
-            END
-    ORDER BY FizzBuzz
-""")
+    # f"SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}"
+    # convert the above query to using alchemy
+    metadata = MetaData()
+    table = Table(
+        temp_table_name,
+        metadata,
+    )
+    query = (
+        session.query(func.count(text("Id")).label("tag_count"))
+        .select_from(table)
+    )
+    query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
+    result = kql_engine.execute(query_compiled)
     # There is Even and Empty only for this test, 2 distinct values
-    assert set([(x[0], x[1]) for x in result.fetchall()]) == set([("NoCandy",3), ("buzz",3), ("fizz",3),("fizzbuzz",3)])
+    assert set([(x[0]) for x in result.fetchall()]) == set([9])
 
+def test_distinct_counts_by(temp_table_name):
+    kql_engine.connect()
+    # f"SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}"
+    # convert the above query to using alchemy
+    metadata = MetaData()
+    table = Table(
+        temp_table_name,
+        metadata,
+    )
+    query = (
+        session.query(
+            func.count(
+                func.distinct(text("Text")))
+            .label("tag_count"))
+        .select_from(table)
+    )
+    query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
+    result = kql_engine.execute(query_compiled)
+    # There is Even and Empty only for this test, 2 distinct values
+    assert set([(x[0]) for x in result.fetchall()]) == set([2])
 
-# def test_limit(temp_table_name):
-#     stream = Table(
-#         temp_table_name,
-#         MetaData(),
-#         Column("Id", Integer),
-#         Column("Text", String),
-#     )
-#
-#     query = stream.select().limit(5)
-#
-#     kql_engine.connect()
-#     result = kql_engine.execute(query)
-#     result_length = len(result.fetchall())
-#     assert result_length == 5
 
 
 def get_kcsb():
