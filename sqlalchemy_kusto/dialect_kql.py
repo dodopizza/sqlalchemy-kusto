@@ -15,13 +15,14 @@ aggregates_sql_to_kql = {
     "count(*)": "count()",
     "count": "count",
     "count(distinct": "dcount",
+    "count(distinct(": "dcount",
     "count_distinct": "dcount",
     "sum": "sum",
     "avg": "avg",
     "min": "min",
     "max": "max",
 }
-AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT\s*)?(\*|\w+)\s*\)"
+AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\w+)\s*\)?\s*\)"
 
 
 class UniversalSet:
