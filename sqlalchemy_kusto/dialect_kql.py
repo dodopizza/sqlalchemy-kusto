@@ -110,18 +110,16 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         projection_statement = ""
         columns = select.inner_columns
         group_by_cols = select._group_by_clauses  # pylint: disable=protected-access
-        """
-
-        With Columns :
-            - Do we have a group by clause ? --Yes---> Do we have aggregate columns ? --Yes---> Summarize new column(s)
-                       |                                   |                                        with by clause
-                       N                                   N --> Add to projection
-                       |
-                       |
-            - Do the columns have aliases ? --Yes---> Extend with aliases
-                       |
-                       N---> Add to projection
-        """
+        """ The following is the logic """
+        # With Columns :
+        #     - Do we have a group by clause ? --Yes---> Do we have aggregate columns ? --Yes--> Summarize new column(s)
+        #                |                                   |                                        with by clause
+        #                N                                   N --> Add to projection
+        #                |
+        #                |
+        #     - Do the columns have aliases ? --Yes---> Extend with aliases
+        #                |
+        #                N---> Add to projection
         if columns is not None:
             summarize_columns = set()
             extend_columns = set()
@@ -153,7 +151,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                         projection_columns.add(self._build_column_projection(column_name, column_alias, True))
 
             # group by columns
-            for column in [c for c in group_by_cols]:
+            for column in group_by_cols:
                 column_name, column_alias = self._extract_column_name_and_alias(column)
                 by_columns.add(column_name)
 
@@ -170,9 +168,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 projection_statement = f"{projection_statement} {extend}" if projection_statement else extend
 
             if projection_columns:
-                for column_alias in alias_name_map:
-                    if projection_columns.__contains__(self._escape_and_quote_columns(column_alias)):
-                        projection_columns.discard(self._escape_and_quote_columns(alias_name_map[column_alias]))
+                for alias, name in alias_name_map.items():
+                    if self._escape_and_quote_columns(alias) in projection_columns:
+                        projection_columns.discard(self._escape_and_quote_columns(name))
                 # escape each column with _escape_and_quote_columns
                 project = (
                     f"| project {', '.join(sorted(projection_columns, key=lambda x: x.split('=')[0], reverse=False))}"
@@ -192,7 +190,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         # Remove surrounding spaces
         # Handle mathematical operations (wrap only the column part before operators)
         # Find the position of the first operator or space that separates the column name
-        for operator in ['/', '+', '-', '*']:
+        for operator in ["/", "+", "-", "*"]:
             if operator in name:
                 # Split the name at the first operator and wrap the left part
                 parts = name.split(operator, 1)
@@ -200,11 +198,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 col_part = parts[0].strip()
                 if col_part.startswith('"') and col_part.endswith('"'):
                     return f'["{col_part[1:-1].strip()}"] {operator} {parts[1].strip()}'
-                else:
-                    return f'["{col_part}"] {operator} {parts[1].strip()}'  # Wrap the column part
-            else:
-                # No operators found, just wrap the entire name
-                return f'["{name}"]'
+                return f'["{col_part}"] {operator} {parts[1].strip()}'  # Wrap the column part
+            # No operators found, just wrap the entire name
+            return f'["{name}"]'
 
     def _get_most_inner_element(self, clause):
         """Finds the most nested element in clause"""
@@ -230,10 +226,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def _extract_column_name_and_alias(column: Column) -> Tuple[str, Optional[str]]:
         if hasattr(column, "element"):
             return str(column.element), column.name
-        elif hasattr(column, "name"):
+        if hasattr(column, "name"):
             return str(column.name), None
-        else:
-            return str(column), None
+        return str(column), None
 
     @staticmethod
     def _build_column_projection(column_name: str, column_alias: str = None, is_extend: bool = False) -> str:

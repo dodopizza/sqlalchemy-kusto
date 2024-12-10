@@ -26,13 +26,10 @@ kql_engine = create_engine(
 
 Session = sessionmaker(bind=kql_engine)
 session = Session()
+metadata = MetaData()
 
 
 def test_group_by(temp_table_name):
-    kql_engine.connect()
-    # f"SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}"
-    # convert the above query to using alchemy
-    metadata = MetaData()
     table = Table(
         temp_table_name,
         metadata,
@@ -44,51 +41,66 @@ def test_group_by(temp_table_name):
         .order_by("tag_count")
     )
     query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
-    result = kql_engine.execute(query_compiled)
-    # There is Even and Empty only for this test, 2 distinct values
-    assert set([(x[1], x[0]) for x in result.fetchall()]) == set([(5, "value_1"), (4, "value_0")])
+    with kql_engine.connect() as connection:
+        # f"SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}"
+        # convert the above query to using alchemy
+        result = connection.execute(text(query_compiled))
+        # There is Even and Empty only for this test, 2 distinct values
+        assert set([(x[1], x[0]) for x in result.fetchall()]) == set([(5, "value_1"), (4, "value_0")])
 
 
 # Test without group
 def test_count_by(temp_table_name):
-    kql_engine.connect()
     # f"SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}"
     # convert the above query to using alchemy
-    metadata = MetaData()
     table = Table(
         temp_table_name,
         metadata,
     )
-    query = (
-        session.query(func.count(text("Id")).label("tag_count"))
-        .select_from(table)
-    )
+    query = session.query(func.count(text("Id")).label("tag_count")).select_from(table)
     query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
-    result = kql_engine.execute(query_compiled)
-    # There is Even and Empty only for this test, 2 distinct values
-    assert set([(x[0]) for x in result.fetchall()]) == set([9])
+    with kql_engine.connect() as connection:
+        result = connection.execute(text(query_compiled))
+        # There is Even and Empty only for this test, 2 distinct values
+        assert set([(x[0]) for x in result.fetchall()]) == set([9])
+
 
 def test_distinct_counts_by(temp_table_name):
-    kql_engine.connect()
     # f"SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}"
     # convert the above query to using alchemy
-    metadata = MetaData()
     table = Table(
         temp_table_name,
         metadata,
     )
-    query = (
-        session.query(
-            func.count(
-                func.distinct(text("Text")))
-            .label("tag_count"))
-        .select_from(table)
-    )
+    query = session.query(func.count(func.distinct(text("Text"))).label("tag_count")).select_from(table)
     query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
-    result = kql_engine.execute(query_compiled)
-    # There is Even and Empty only for this test, 2 distinct values
-    assert set([(x[0]) for x in result.fetchall()]) == set([2])
+    with kql_engine.connect() as connection:
+        result = connection.execute(text(query_compiled))
+        # There is Even and Empty only for this test, 2 distinct values
+        assert set([(x[0]) for x in result.fetchall()]) == set([2])
 
+
+@pytest.mark.parametrize(
+    "f,label,expected",
+    [
+        pytest.param(func.min(text("Id")), "Min", 1),
+        pytest.param(func.max(text("Id")), "Max", 9),
+        pytest.param(func.sum(text("Id")), "Sum", 45),
+    ],
+)
+def test_all_group_ops(f, label, expected, temp_table_name):
+    # f"SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}"
+    # convert the above query to using alchemy
+    table = Table(
+        temp_table_name,
+        metadata,
+    )
+    query = session.query(f.label(label)).select_from(table)
+    query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
+    with kql_engine.connect() as connection:
+        result = connection.execute(text(query_compiled))
+        # There is Even and Empty only for this test, 2 distinct values
+        assert set([(x[0]) for x in result.fetchall()]) == set([expected])
 
 
 def get_kcsb():
