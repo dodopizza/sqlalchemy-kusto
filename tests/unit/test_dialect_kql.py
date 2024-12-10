@@ -53,9 +53,7 @@ def test_compiler_with_star():
 def test_select_from_text():
     query = select([column("Field1"), column("Field2")]).select_from(text("logs")).limit(100)
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
-    query_expected = (
-        '["logs"]| project ["Field1"], ["Field2"]| take 100'
-    )
+    query_expected = '["logs"]| project ["Field1"], ["Field2"]| take 100'
 
     assert query_compiled == query_expected
 
@@ -164,10 +162,7 @@ def test_use_table():
     query = stream.select().limit(5)
     query_compiled = str(query.compile(engine)).replace("\n", "")
 
-    query_expected = (
-        '["logs"]'
-        '| project ["Field1"], ["Field2"]| take __[POSTCOMPILE_param_1]'
-    )
+    query_expected = '["logs"]' '| project ["Field1"], ["Field2"]| take __[POSTCOMPILE_param_1]'
     assert query_compiled == query_expected
 
 
@@ -199,11 +194,11 @@ def test_select_count():
 
     query_expected = (
         'let inner_qry = (["logs"]);'
-        'inner_qry'
-        '| where Field1 > 1 and Field2 < 2'
-        '| summarize count = count()  '
+        "inner_qry"
+        "| where Field1 > 1 and Field2 < 2"
+        "| summarize count = count()  "
         '| project ["count"]'
-        '| take 5'
+        "| take 5"
     )
 
     assert query_compiled == query_expected
