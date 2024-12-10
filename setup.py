@@ -12,7 +12,7 @@ REQUIREMENTS = [
 ]
 EXTRAS = {
     "dev": [
-        "black>=24.10.0",
+        "black>=24.8.0",
         "isort>=5.13.2",
         "mypy==1.13.0",
         "pylint==3.3.2",
