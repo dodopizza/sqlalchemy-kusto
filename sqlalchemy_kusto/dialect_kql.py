@@ -5,6 +5,7 @@ from typing import List, Optional, Tuple
 from sqlalchemy import Column, exc
 from sqlalchemy.sql import compiler, operators, selectable
 from sqlalchemy.sql.compiler import OPERATORS
+from sqlalchemy.util import ordered_column_set
 
 from sqlalchemy_kusto import NotSupportedError
 from sqlalchemy_kusto.dialect_base import KustoBaseDialect
@@ -105,12 +106,17 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def limit_clause(self, select, **kw):
         return ""
 
+
     def _get_projection_or_summarize(self, select: selectable.Select) -> str:
         """Builds the ending part of the query either project or summarize"""
-        projection_statement = ""
         columns = select.inner_columns
         group_by_cols = select._group_by_clauses  # pylint: disable=protected-access
-        """ The following is the logic """
+        order_by_cols = select._order_by_clauses  # pylint: disable=protected-access
+        summarize_statement = ""
+        extend_statement = ""
+        project_statement = ""
+        sort_statement = ""
+        # The following is the logic
         # With Columns :
         #     - Do we have a group by clause ? --Yes---> Do we have aggregate columns ? --Yes--> Summarize new column(s)
         #                |                                   |                                        with by clause
@@ -120,10 +126,11 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         #     - Do the columns have aliases ? --Yes---> Extend with aliases
         #                |
         #                N---> Add to projection
+        ordered_columns = set()
         if columns is not None:
             summarize_columns = set()
             extend_columns = set()
-            projection_columns = set()
+            projection_columns = list()
             by_columns = set()
             alias_name_map = {}
             for column in [c for c in columns if c.name != "*"]:
@@ -138,50 +145,65 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     is_distinct = bool(distinct_keyword) or aggregate_func.casefold() == "count_distinct"
                     kql_agg = self._sql_to_kql_aggregate(aggregate_func, agg_column_name, is_distinct)
                     summarize_columns.add(self._build_column_projection(kql_agg, column_alias))
-                    if column_alias:
-                        projection_columns.add(self._escape_and_quote_columns(column_alias))
                 # No group by clause
                 else:
                     # Do the columns have aliases ?
-                    if column_alias:
+                    # Add additional and to handle case where : SELECT column_name as column_name
+                    if column_alias and column_alias != column_name:
                         extend_columns.add(self._build_column_projection(column_name, column_alias, True))
                         alias_name_map[column_alias] = column_name
-                        projection_columns.add(self._escape_and_quote_columns(column_alias))
-                    else:
-                        projection_columns.add(self._build_column_projection(column_name, column_alias, True))
-
+                if column_alias:
+                    projection_columns.append(self._escape_and_quote_columns(column_alias))
+                else:
+                    projection_columns.append(self._escape_and_quote_columns(column_name))
             # group by columns
             for column in group_by_cols:
                 column_name, column_alias = self._extract_column_name_and_alias(column)
-                by_columns.add(column_name)
+                if column_alias:
+                    by_columns.add(self._escape_and_quote_columns(column_alias))
+                else:
+                    by_columns.add(self._escape_and_quote_columns(column_name))
 
             if summarize_columns:
                 # escape each column with _escape_and_quote_columns
-                projection_statement = f"| summarize {', '.join(sorted(summarize_columns))} "
+                summarize_statement = f"| summarize {', '.join(summarize_columns)} "
                 if by_columns:
-                    by_columns_escaped = [self._escape_and_quote_columns(c) for c in by_columns]
-                    projection_columns.add(*by_columns_escaped)
-                    projection_statement = f"{projection_statement} by {', '.join(sorted(by_columns_escaped))}"
+                    # [projection_columns.add(c) for c in by_columns]
+                    summarize_statement = f"{summarize_statement} by {', '.join(by_columns)}"
+
             if extend_columns:
                 # escape each column with _escape_and_quote_columns
-                extend = f"| extend {', '.join(sorted(extend_columns))}"
-                projection_statement = f"{projection_statement} {extend}" if projection_statement else extend
+                extend_statement = f"| extend {', '.join(extend_columns)}"
 
-            if projection_columns:
+            if projection_columns and not by_columns:
                 for alias, name in alias_name_map.items():
                     if self._escape_and_quote_columns(alias) in projection_columns:
-                        projection_columns.discard(self._escape_and_quote_columns(name))
+                        projection_columns.remove(self._escape_and_quote_columns(name))
                 # escape each column with _escape_and_quote_columns
-                project = (
-                    f"| project {', '.join(sorted(projection_columns, key=lambda x: x.split('=')[0], reverse=False))}"
-                )
-                projection_statement = f"{projection_statement} {project}" if projection_statement else project
+            project_statement = (
+                f"| project {', '.join(projection_columns)}"
+            )
+        for label_ref in order_by_cols:
+            label = getattr(label_ref, "element", None)
+            if label:
+                ordered_columns.add(str(label))
 
+        sort_statement = f"| sort by {', '.join(sorted(ordered_columns)).replace('ASC','asc').replace('DESC','desc')}" if order_by_cols else ""
+
+        logger.warning("=====================================================================")
+        logger.warning("Extend: %s", extend_statement)
+        logger.warning("Summarize: %s", summarize_statement)
+        logger.warning("Project: %s", project_statement)
+        logger.warning("Sort: %s", sort_statement)
+        logger.warning("=====================================================================")
+        projection_statement = f"{extend_statement} {summarize_statement} {project_statement}"
         return projection_statement
 
     @staticmethod
     def _escape_and_quote_columns(name: str):
         name = name.strip()
+        if KustoKqlCompiler._is_kql_function(name):
+            return name
         if name.startswith('"') and name.endswith('"'):
             name = name[1:-1]
         # First, check if the name is already wrapped in ["ColumnName"] (escaped format)
@@ -201,6 +223,11 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 return f'["{col_part}"] {operator} {parts[1].strip()}'  # Wrap the column part
             # No operators found, just wrap the entire name
             return f'["{name}"]'
+
+    @staticmethod
+    def _is_kql_function(name:str):
+        pattern = r'^[a-zA-Z_][a-zA-Z0-9_]*\s*\('
+        return bool(re.match(pattern, name))
 
     def _get_most_inner_element(self, clause):
         """Finds the most nested element in clause"""

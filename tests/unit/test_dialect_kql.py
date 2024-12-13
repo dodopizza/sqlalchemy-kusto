@@ -79,6 +79,26 @@ def test_group_by_text():
     assert query_compiled == query_expected
 
 
+def test_group_by_text_vaccine_dataset():
+    # SELECT country_name AS country_name FROM superset."CovidVaccineData" GROUP BY country_name ORDER BY country_name ASC
+    query = (
+        select([literal_column("country_name").label("country_name")])
+        .select_from(text('superset."CovidVaccineData"'))
+        .group_by(literal_column("country_name"))
+        .order_by(text("country_name ASC"))
+    )
+    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_expected = 'database("superset").["CovidVaccineData"]| project country_name = ["country_name"]'
+    assert query_compiled == query_expected
+
+def test_is_kql_function():
+    assert KustoKqlCompiler._is_kql_function("""case(Size <= 3, "Small",
+                       Size <= 10, "Medium",
+                       "Large")""")
+    assert KustoKqlCompiler._is_kql_function("""bin(time(16d), 7d)""")
+    assert KustoKqlCompiler._is_kql_function("""iff((EventType in ("Heavy Rain", "Flash Flood", "Flood")), "Rain event", "Not rain event")""")
+
+
 def test_distinct_count_by_text():
     # create a query from select_query_text creating clause
     # 'SELECT "EventInfo_Time" / time(1d) AS "EventInfo_Time", count(DISTINCT ActiveUsers) AS "DistinctUsers"
