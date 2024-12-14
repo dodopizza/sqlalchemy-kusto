@@ -2,7 +2,7 @@ import logging
 import re
 from typing import List, Optional, Tuple
 
-from sqlalchemy import Column, exc
+from sqlalchemy import Column, exc, sql
 from sqlalchemy.sql import compiler, operators, selectable
 from sqlalchemy.sql.compiler import OPERATORS
 from sqlalchemy.util import ordered_column_set
@@ -106,7 +106,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def limit_clause(self, select, **kw):
         return ""
 
-
     def _get_projection_or_summarize(self, select: selectable.Select) -> str:
         """Builds the ending part of the query either project or summarize"""
         columns = select.inner_columns
@@ -115,7 +114,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         summarize_statement = ""
         extend_statement = ""
         project_statement = ""
-        sort_statement = ""
         # The following is the logic
         # With Columns :
         #     - Do we have a group by clause ? --Yes---> Do we have aggregate columns ? --Yes--> Summarize new column(s)
@@ -164,7 +162,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 else:
                     by_columns.add(self._escape_and_quote_columns(column_name))
 
-            if summarize_columns:
+            if group_by_cols:
                 # escape each column with _escape_and_quote_columns
                 summarize_statement = f"| summarize {', '.join(summarize_columns)} "
                 if by_columns:
@@ -183,20 +181,17 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             project_statement = (
                 f"| project {', '.join(projection_columns)}"
             )
-        for label_ref in order_by_cols:
-            label = getattr(label_ref, "element", None)
-            if label:
-                ordered_columns.add(str(label))
 
-        sort_statement = f"| sort by {', '.join(sorted(ordered_columns)).replace('ASC','asc').replace('DESC','desc')}" if order_by_cols else ""
-
-        logger.warning("=====================================================================")
-        logger.warning("Extend: %s", extend_statement)
-        logger.warning("Summarize: %s", summarize_statement)
-        logger.warning("Project: %s", project_statement)
-        logger.warning("Sort: %s", sort_statement)
-        logger.warning("=====================================================================")
-        projection_statement = f"{extend_statement} {summarize_statement} {project_statement}"
+        unwrapped_order_by = [
+            (
+                f"{elem.element._order_by_label_element.name} {'desc' if elem.element.modifier==operators.desc_op else 'asc' }"
+                if isinstance(elem, sql.elements._label_reference)
+                else elem
+            )
+            for elem in order_by_cols
+        ]
+        sort_statement = f"| sort by {', '.join(unwrapped_order_by)}" if unwrapped_order_by else ""
+        projection_statement = f"{extend_statement} {summarize_statement} {project_statement} {sort_statement}"
         return projection_statement
 
     @staticmethod
