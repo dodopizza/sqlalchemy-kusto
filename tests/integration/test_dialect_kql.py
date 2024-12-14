@@ -35,7 +35,7 @@ def test_group_by(temp_table_name):
         metadata,
     )
     query = (
-        session.query(func.count(text("Id")).label("tag_count"))
+        session.query(func.count(text("Id")).label("tag_count")).add_columns(Column("Text", String))
         .select_from(table)
         .group_by(text("Text"))
         .order_by("tag_count")
@@ -46,7 +46,7 @@ def test_group_by(temp_table_name):
         # convert the above query to using alchemy
         result = connection.execute(text(query_compiled))
         # There is Even and Empty only for this test, 2 distinct values
-        assert set([(x[1], x[0]) for x in result.fetchall()]) == set([(5, "value_1"), (4, "value_0")])
+        assert set([(x[0], x[1]) for x in result.fetchall()]) == set([(5, "value_1"), (4, "value_0")])
 
 
 # Test without group

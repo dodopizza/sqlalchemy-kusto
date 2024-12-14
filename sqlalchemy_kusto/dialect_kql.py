@@ -5,7 +5,6 @@ from typing import List, Optional, Tuple
 from sqlalchemy import Column, exc, sql
 from sqlalchemy.sql import compiler, operators, selectable
 from sqlalchemy.sql.compiler import OPERATORS
-from sqlalchemy.util import ordered_column_set
 
 from sqlalchemy_kusto import NotSupportedError
 from sqlalchemy_kusto.dialect_base import KustoBaseDialect
@@ -37,6 +36,22 @@ class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
 
     def __init__(self, dialect, **kw):
         super().__init__(dialect, initial_quote='["', final_quote='"]', **kw)
+
+
+def _get_order_by(order_by_cols):
+    unwrapped_order_by = []
+    for elem in order_by_cols:
+        if isinstance(elem, sql.elements._label_reference):
+            nested_element = elem.element
+            unwrapped_order_by.append(
+                f"{nested_element._order_by_label_element.name} "
+                f"{'desc' if (nested_element.modifier == operators.desc_op) else 'asc'}"
+            )
+        elif isinstance(elem, sql.elements.TextClause):
+            unwrapped_order_by.append(elem.text.replace(" ASC", " asc").replace(" DESC", " desc"))
+        else:
+            logger.warning("Unsupported order by clause: %s of type %s", elem, type(elem))
+    return unwrapped_order_by
 
 
 class KustoKqlCompiler(compiler.SQLCompiler):
@@ -114,6 +129,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         summarize_statement = ""
         extend_statement = ""
         project_statement = ""
+        has_aggregates = False
         # The following is the logic
         # With Columns :
         #     - Do we have a group by clause ? --Yes---> Do we have aggregate columns ? --Yes--> Summarize new column(s)
@@ -124,19 +140,17 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         #     - Do the columns have aliases ? --Yes---> Extend with aliases
         #                |
         #                N---> Add to projection
-        ordered_columns = set()
         if columns is not None:
             summarize_columns = set()
             extend_columns = set()
-            projection_columns = list()
-            by_columns = set()
-            alias_name_map = {}
+            projection_columns = []
             for column in [c for c in columns if c.name != "*"]:
                 column_name, column_alias = self._extract_column_name_and_alias(column)
                 # Do we have a group by clause ?
                 match_agg_cols = re.match(AGGREGATE_PATTERN, column_name, re.IGNORECASE)
                 # Do we have aggregate columns ?
                 if match_agg_cols:
+                    has_aggregates = True
                     aggregate_func, distinct_keyword, agg_column_name = match_agg_cols.groups()
                     # Check if the aggregate function is count_distinct. This is case from superset
                     # where we can use count(distinct or count_distinct)
@@ -149,50 +163,37 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     # Add additional and to handle case where : SELECT column_name as column_name
                     if column_alias and column_alias != column_name:
                         extend_columns.add(self._build_column_projection(column_name, column_alias, True))
-                        alias_name_map[column_alias] = column_name
                 if column_alias:
                     projection_columns.append(self._escape_and_quote_columns(column_alias))
                 else:
                     projection_columns.append(self._escape_and_quote_columns(column_name))
             # group by columns
-            for column in group_by_cols:
-                column_name, column_alias = self._extract_column_name_and_alias(column)
-                if column_alias:
-                    by_columns.add(self._escape_and_quote_columns(column_alias))
-                else:
-                    by_columns.add(self._escape_and_quote_columns(column_name))
-
-            if group_by_cols:
+            by_columns = self._group_by(group_by_cols)
+            if has_aggregates or bool(by_columns):  # Summarize can happen with or without aggregate being created
                 # escape each column with _escape_and_quote_columns
                 summarize_statement = f"| summarize {', '.join(summarize_columns)} "
                 if by_columns:
-                    # [projection_columns.add(c) for c in by_columns]
                     summarize_statement = f"{summarize_statement} by {', '.join(by_columns)}"
-
             if extend_columns:
                 # escape each column with _escape_and_quote_columns
-                extend_statement = f"| extend {', '.join(extend_columns)}"
+                extend_statement = f"| extend {', '.join(sorted(extend_columns))}"
+            project_statement = f"| project {', '.join(projection_columns)}" if projection_columns else ""
 
-            if projection_columns and not by_columns:
-                for alias, name in alias_name_map.items():
-                    if self._escape_and_quote_columns(alias) in projection_columns:
-                        projection_columns.remove(self._escape_and_quote_columns(name))
-                # escape each column with _escape_and_quote_columns
-            project_statement = (
-                f"| project {', '.join(projection_columns)}"
-            )
+        unwrapped_order_by = _get_order_by(order_by_cols)
 
-        unwrapped_order_by = [
-            (
-                f"{elem.element._order_by_label_element.name} {'desc' if elem.element.modifier==operators.desc_op else 'asc' }"
-                if isinstance(elem, sql.elements._label_reference)
-                else elem
-            )
-            for elem in order_by_cols
-        ]
         sort_statement = f"| sort by {', '.join(unwrapped_order_by)}" if unwrapped_order_by else ""
-        projection_statement = f"{extend_statement} {summarize_statement} {project_statement} {sort_statement}"
+        projection_statement = f"{extend_statement}{summarize_statement}{project_statement}{sort_statement}"
         return projection_statement
+
+    def _group_by(self, group_by_cols):
+        by_columns = set()
+        for column in group_by_cols:
+            column_name, column_alias = self._extract_column_name_and_alias(column)
+            if column_alias:
+                by_columns.add(self._escape_and_quote_columns(column_alias))
+            else:
+                by_columns.add(self._escape_and_quote_columns(column_name))
+        return by_columns
 
     @staticmethod
     def _escape_and_quote_columns(name: str):
@@ -220,8 +221,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             return f'["{name}"]'
 
     @staticmethod
-    def _is_kql_function(name:str):
-        pattern = r'^[a-zA-Z_][a-zA-Z0-9_]*\s*\('
+    def _is_kql_function(name: str):
+        pattern = r"^[a-zA-Z_][a-zA-Z0-9_]*\s*\("
         return bool(re.match(pattern, name))
 
     def _get_most_inner_element(self, clause):

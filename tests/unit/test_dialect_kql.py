@@ -24,10 +24,10 @@ def test_compiler_with_projection():
 
     query_compiled = str(query.compile(engine)).replace("\n", "")
     query_expected = (
-        'let virtual_table = (["logs"] | take 10);'
-        "virtual_table"
-        '| extend id = ["Id"], tId = ["TypeId"] '
-        '| project ["Type"], ["id"], ["tId"]'
+        'let virtual_table = (["logs"] '
+        "| take 10);virtual_table"
+        '| extend id = ["Id"], tId = ["TypeId"]'
+        '| project ["id"], ["tId"], ["Type"]'
         "| take __[POSTCOMPILE_param_1]"
     )
 
@@ -72,9 +72,11 @@ def test_group_by_text():
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
     # raw query text from query
     query_expected = (
-        '["ActiveUsersLastMonth"]'
-        '| extend ActiveUserMetric = ["ActiveUsers"], EventInfo_Time = ["EventInfo_Time"] / time(1d) '
-        '| project ["ActiveUserMetric"], ["EventInfo_Time"]'
+        '["ActiveUsersLastMonth"]| extend ActiveUserMetric = ["ActiveUsers"], '
+        'EventInfo_Time = ["EventInfo_Time"] / time(1d)'
+        '| summarize   by ["EventInfo_Time"] / time(1d)'
+        '| project ["EventInfo_Time"], ["ActiveUserMetric"]'
+        "| sort by ActiveUserMetric desc"
     )
     assert query_compiled == query_expected
 
@@ -88,15 +90,25 @@ def test_group_by_text_vaccine_dataset():
         .order_by(text("country_name ASC"))
     )
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
-    query_expected = 'database("superset").["CovidVaccineData"]| project country_name = ["country_name"]'
+    query_expected = (
+        'database("superset").["CovidVaccineData"]'
+        '| summarize   by ["country_name"]'
+        '| project ["country_name"]'
+        "| sort by country_name asc"
+    )
     assert query_compiled == query_expected
 
+
 def test_is_kql_function():
-    assert KustoKqlCompiler._is_kql_function("""case(Size <= 3, "Small",
+    assert KustoKqlCompiler._is_kql_function(
+        """case(Size <= 3, "Small",
                        Size <= 10, "Medium",
-                       "Large")""")
+                       "Large")"""
+    )
     assert KustoKqlCompiler._is_kql_function("""bin(time(16d), 7d)""")
-    assert KustoKqlCompiler._is_kql_function("""iff((EventType in ("Heavy Rain", "Flash Flood", "Flood")), "Rain event", "Not rain event")""")
+    assert KustoKqlCompiler._is_kql_function(
+        """iff((EventType in ("Heavy Rain", "Flash Flood", "Flood")), "Rain event", "Not rain event")"""
+    )
 
 
 def test_distinct_count_by_text():
@@ -115,9 +127,10 @@ def test_distinct_count_by_text():
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| summarize DistinctUsers = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d) '
-        '| extend EventInfo_Time = ["EventInfo_Time"] / time(1d) '
-        '| project ["DistinctUsers"], ["EventInfo_Time"]'
+        '| extend EventInfo_Time = ["EventInfo_Time"] / time(1d)'
+        '| summarize DistinctUsers = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
+        '| project ["EventInfo_Time"], ["DistinctUsers"]'
+        "| sort by ActiveUserMetric desc"
     )
     assert query_compiled == query_expected
 
@@ -138,9 +151,10 @@ def test_distinct_count_alt_by_text():
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| summarize DistinctUsers = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d) '
-        '| extend EventInfo_Time = ["EventInfo_Time"] / time(1d) '
-        '| project ["DistinctUsers"], ["EventInfo_Time"]'
+        '| extend EventInfo_Time = ["EventInfo_Time"] / time(1d)'
+        '| summarize DistinctUsers = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
+        '| project ["EventInfo_Time"], ["DistinctUsers"]'
+        "| sort by ActiveUserMetric desc"
     )
 
     assert query_compiled == query_expected
@@ -216,8 +230,9 @@ def test_select_count():
         'let inner_qry = (["logs"]);'
         "inner_qry"
         "| where Field1 > 1 and Field2 < 2"
-        "| summarize count = count()  "
+        "| summarize count = count() "
         '| project ["count"]'
+        "| sort by count desc"
         "| take 5"
     )
 
