@@ -1,6 +1,18 @@
 import pytest
 import sqlalchemy as sa
-from sqlalchemy import Column, MetaData, String, Table, column, create_engine, distinct, literal_column, select, text
+from sqlalchemy import (
+    Column,
+    Integer,
+    MetaData,
+    String,
+    Table,
+    column,
+    create_engine,
+    distinct,
+    literal_column,
+    select,
+    text,
+)
 from sqlalchemy.sql.selectable import TextAsFrom
 
 from sqlalchemy_kusto.dialect_kql import KustoKqlCompiler
@@ -43,10 +55,8 @@ def test_compiler_with_star():
     )
     query = query.select_from(stmt)
     query = query.limit(10)
-
     query_compiled = str(query.compile(engine)).replace("\n", "")
     query_expected = 'let virtual_table = (["logs"] | take 10);' "virtual_table" "| take __[POSTCOMPILE_param_1]"
-
     assert query_compiled == query_expected
 
 
@@ -54,7 +64,33 @@ def test_select_from_text():
     query = select([column("Field1"), column("Field2")]).select_from(text("logs")).limit(100)
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
     query_expected = '["logs"]| project ["Field1"], ["Field2"]| take 100'
+    assert query_compiled == query_expected
 
+
+@pytest.mark.parametrize(
+    "f,expected",
+    [
+        pytest.param(Column("Field1", String).in_(["1", "One"]), """["Field1"] in ('1', 'One')"""),
+        pytest.param(Column("Field1", String).notin_(["1", "One"]), """(["Field1"] not in ('1', 'One'))"""),
+        pytest.param(text("Field1 = '1'"), """Field1 == '1'"""),
+        pytest.param(Column("Field2", Integer).between(2, 4), """["Field2"] between (2..4)"""),
+        pytest.param(Column("Field2", Integer).is_(None), """isnull(["Field2"])"""),
+        # pytest.param(Column("Field1", String).contains("FIELD"), """["Field2"] has 'FIELD'"""),
+        pytest.param(Column("Field2", Integer).isnot(None), """isnotnull(["Field2"])"""),
+        pytest.param(
+            (Column("Field2", Integer).isnot(None)).__and__(Column("Field1", String).notin_(["1", "One"])),
+            """isnotnull(["Field2"]) and (["Field1"] not in ('1', 'One'))""",
+        ),
+        pytest.param(
+            (Column("Field2", Integer).isnot(None)).__or__(Column("Field1", String).notin_(["1", "One"])),
+            """isnotnull(["Field2"]) or (["Field1"] not in ('1', 'One'))""",
+        ),
+    ],
+)
+def test_where_predicates(f, expected):
+    query = (select([column("Field1"), column("Field2")]).select_from(text("logs")).where(f)).limit(100)
+    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_expected = f"""["logs"]| where {expected}| project ["Field1"], ["Field2"]| take 100"""
     assert query_compiled == query_expected
 
 

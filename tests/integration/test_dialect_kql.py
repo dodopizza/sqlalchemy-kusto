@@ -35,7 +35,8 @@ def test_group_by(temp_table_name):
         metadata,
     )
     query = (
-        session.query(func.count(text("Id")).label("tag_count")).add_columns(Column("Text", String))
+        session.query(func.count(text("Id")).label("tag_count"))
+        .add_columns(Column("Text", String))
         .select_from(table)
         .group_by(text("Text"))
         .order_by("tag_count")

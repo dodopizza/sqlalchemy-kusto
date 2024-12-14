@@ -100,7 +100,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         if select_stmt._whereclause is not None:
             where_clause = select_stmt._whereclause._compiler_dispatch(self, **kwargs)
             if where_clause:
-                compiled_query_lines.append(f"| where {where_clause}")
+                converted_where_clause = self.sql_to_kql_where(where_clause)
+                compiled_query_lines.append(f"| where {converted_where_clause}")
 
         projections = self._get_projection_or_summarize(select_stmt)
         if projections:
@@ -221,6 +222,51 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             return f'["{name}"]'
 
     @staticmethod
+    def sql_to_kql_where(where_clause: str):
+        where_clause = where_clause.strip()
+        #Handle 'IS NULL' and 'IS NOT NULL' -> KQL equivalents
+        where_clause = re.sub(
+            r'(\["[^\]]+"\])\s*IS NULL', r"isnull(\1)", where_clause, re.IGNORECASE
+        )  # IS NULL -> isnull(["FieldName"])
+        where_clause = re.sub(
+            r'(\["[^\]]+"\])\s*IS NOT NULL', r"isnotnull(\1)", where_clause, re.IGNORECASE
+        )  # IS NOT NULL -> isnotnull(["FieldName"])
+        #Handle comparison operators
+        where_clause = re.sub(
+            r"(\s)(=)\s*", r" \2= ", where_clause, re.IGNORECASE
+        )  # Change '=' to '==' for equality comparisons
+        where_clause = re.sub(r"(\s)(<>|!=)\s*", r" \2 ", where_clause, re.IGNORECASE)  # Handle '!=' and '<>'
+        where_clause = re.sub(
+            r"(\s)(<|<=|>|>=)\s*", r" \2 ", where_clause, re.IGNORECASE
+        )  # Comparison operators: <, <=, >, >=
+        # Step 3: Handle 'LIKE' -> 'has' for substring matching
+        where_clause = re.sub(r"(\s)LIKE\s*", r"\1has ", where_clause, re.IGNORECASE)  # Replace LIKE with has
+        # Step 4: Handle 'IN' and 'NOT IN' operators (with lists inside parentheses)
+        # We need to correctly handle multiple spaces around IN/NOT IN and lists inside parentheses
+        where_clause = re.sub(
+            r"(\s)NOT IN\s*\(([^)]+)\)", r"\1not in (\2)", where_clause, re.IGNORECASE
+        )  # NOT IN operator (list of values)
+        where_clause = re.sub(
+            r"(\s)IN\s*\(([^)]+)\)", r"\1in (\2)", where_clause, re.IGNORECASE
+        )  # IN operator (list of values)
+        #Handle BETWEEN operator (if needed)
+
+        where_clause = re.sub(
+            r"(\w+|\[\"[A-Za-z0-9_]+\"\]) (BETWEEN|between) (\d) (AND|and) (\d)",
+            r"\1 between (\3..\5)",
+            where_clause,
+            re.IGNORECASE,
+        )
+        where_clause = re.sub(
+            r"(\w+) (BETWEEN|between) (\d) (AND|and) (\d)", r"\1 between (\3..\5)", where_clause, re.IGNORECASE
+        )
+        # Handle logical operators 'AND' and 'OR' to ensure the conditions are preserved
+        where_clause = re.sub(r"\s+AND\s+", r" and ", where_clause, re.IGNORECASE)  # Replace AND with 'and' in KQL
+        where_clause = re.sub(r"\s+OR\s+", r" or ", where_clause, re.IGNORECASE)  # Replace OR with 'or' in KQL
+
+        return where_clause
+
+    @staticmethod
     def _is_kql_function(name: str):
         pattern = r"^[a-zA-Z_][a-zA-Z0-9_]*\s*\("
         return bool(re.match(pattern, name))
@@ -262,7 +308,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 if column_alias
                 else KustoKqlCompiler._escape_and_quote_columns(column_name)
             )
-
         return f"{column_alias} = {column_name}" if column_alias else column_name
 
     @staticmethod
