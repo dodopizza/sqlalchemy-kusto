@@ -1,3 +1,5 @@
+import re
+
 import pytest
 import sqlalchemy as sa
 from sqlalchemy import (
@@ -9,14 +11,15 @@ from sqlalchemy import (
     column,
     create_engine,
     distinct,
+    func,
     literal_column,
     select,
-    text, func,
+    text,
 )
 from sqlalchemy.sql import sqltypes
 from sqlalchemy.sql.selectable import TextAsFrom
 
-from sqlalchemy_kusto.dialect_kql import KustoKqlCompiler
+from sqlalchemy_kusto.dialect_kql import AGGREGATE_PATTERN, KustoKqlCompiler
 
 engine = create_engine("kustokql+https://localhost/testdb")
 
@@ -216,6 +219,7 @@ def test_sql_to_kql_aggregate():
     )
     assert KustoKqlCompiler._sql_to_kql_aggregate("sum", "Sales") == 'sum(["Sales"])'
     assert KustoKqlCompiler._sql_to_kql_aggregate("avg", "ResponseTime") == 'avg(["ResponseTime"])'
+    assert KustoKqlCompiler._sql_to_kql_aggregate("AVG", "ResponseTime") == 'avg(["ResponseTime"])'
     assert KustoKqlCompiler._sql_to_kql_aggregate("min", "Size") == 'min(["Size"])'
     assert KustoKqlCompiler._sql_to_kql_aggregate("max", "Area") == 'max(["Area"])'
     assert KustoKqlCompiler._sql_to_kql_aggregate("unknown", "Column") is None
@@ -245,6 +249,7 @@ def test_limit():
     query_expected = 'let inner_qry = (["logs"]);' "inner_qry" "| take 5"
     assert query_compiled == query_expected
 
+
 def test_select_count():
     kql_query = "logs"
     column_count = literal_column("count(*)").label("count")
@@ -271,44 +276,6 @@ def test_select_count():
 
     assert query_compiled == query_expected
 
-def compiler_with_startofmonth_group_by():
-    metadata = MetaData()
-    sales_data = Table(
-        "SalesData",
-        metadata,
-        Column("order_date", String),
-        Column("product_line", String),
-        Column("sales", sqltypes.Float),
-    )
-    query = (
-        select(
-            [
-                func.startofmonth(sales_data.c.order_date).label("order_date"),
-                sales_data.c.product_line.label("product_line"),
-                func.sum(sales_data.c.sales).label("(Sales)"),
-            ]
-        )
-        .where(
-            text(
-                "order_date >= datetime('2003-01-01T00:00:00.000000') and order_date < datetime('2005-06-01T00:00:00.000000')"
-            )
-        )
-        .group_by(
-            func.startofmonth(sales_data.c.order_date),
-            sales_data.c.product_line,
-        )
-        .order_by(text('"(Sales)" DESC'))
-    )
-
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
-    query_expected = (
-        '["SalesData"]'
-        '| extend ["order_date"] = startofmonth(["order_date"])'
-        '| summarize ["(Sales)"] = sum(["sales"]) by ["order_date"], ["product_line"]'
-        '| project ["order_date"], ["product_line"], ["(Sales)"]'
-        '| order by ["(Sales)"] desc'
-    )
-    assert query_compiled == query_expected
 
 def test_select_with_let():
     kql_query = "let x = 5; let y = 3; MyTable | where Field1 == x and Field2 == y"
@@ -370,12 +337,32 @@ def test_schema_from_metadata(table_name: str, schema_name: str, expected_table_
         metadata,
     )
     query = stream.select().limit(5)
-
     query_compiled = str(query.compile(engine)).replace("\n", "")
-
     query_expected = f"{expected_table_name}| take __[POSTCOMPILE_param_1]"
     assert query_compiled == query_expected
 
+
+@pytest.mark.parametrize(
+    "column_name,expected_aggregate",
+    [
+        ("AVG(Score)", 'avg(["Score"])'),
+        ('AVG("2014")', 'avg(["2014"])'),
+        ('sum("2014")', 'sum(["2014"])'),
+        ("SUM(scores)", 'sum(["scores"])'),
+        ('MIN("scores")', 'min(["scores"])'),
+        ('MIN(["scores"])', 'min(["scores"])'),
+        ('max(scores)', 'max(["scores"])'),
+        ('startofmonth(somedate)', None),
+        ('startofmonth(somedate)/time(1d)', None),
+    ],
+)
+def test_match_aggregates(column_name: str, expected_aggregate: str):
+    kql_agg = KustoKqlCompiler._extract_maybe_agg_column_parts(column_name)
+    if expected_aggregate:
+        assert kql_agg is not None
+        assert kql_agg == expected_aggregate
+    else :
+        assert kql_agg is None
 
 @pytest.mark.parametrize(
     "query_table_name,expected_table_name",
