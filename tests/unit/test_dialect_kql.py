@@ -11,8 +11,9 @@ from sqlalchemy import (
     distinct,
     literal_column,
     select,
-    text,
+    text, func,
 )
+from sqlalchemy.sql import sqltypes
 from sqlalchemy.sql.selectable import TextAsFrom
 
 from sqlalchemy_kusto.dialect_kql import KustoKqlCompiler
@@ -38,7 +39,7 @@ def test_compiler_with_projection():
     query_expected = (
         'let virtual_table = (["logs"] '
         "| take 10);virtual_table"
-        '| extend id = ["Id"], tId = ["TypeId"]'
+        '| extend ["id"] = ["Id"], ["tId"] = ["TypeId"]'
         '| project ["id"], ["tId"], ["Type"]'
         "| take __[POSTCOMPILE_param_1]"
     )
@@ -108,11 +109,11 @@ def test_group_by_text():
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
     # raw query text from query
     query_expected = (
-        '["ActiveUsersLastMonth"]| extend ActiveUserMetric = ["ActiveUsers"], '
-        'EventInfo_Time = ["EventInfo_Time"] / time(1d)'
+        '["ActiveUsersLastMonth"]| extend ["ActiveUserMetric"] = ["ActiveUsers"], '
+        '["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| summarize   by ["EventInfo_Time"] / time(1d)'
         '| project ["EventInfo_Time"], ["ActiveUserMetric"]'
-        "| sort by ActiveUserMetric desc"
+        '| order by ["ActiveUserMetric"] desc'
     )
     assert query_compiled == query_expected
 
@@ -127,10 +128,10 @@ def test_group_by_text_vaccine_dataset():
     )
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
     query_expected = (
-        'database("superset").["CovidVaccineData"]'
-        '| summarize   by ["country_name"]'
-        '| project ["country_name"]'
-        "| sort by country_name asc"
+        'database("superset").["CovidVaccineData"]| '
+        'extend ["country_name"] = ["country_name"]| '
+        'summarize   by ["country_name"]| '
+        'project ["country_name"]| order by ["country_name"] asc'
     )
     assert query_compiled == query_expected
 
@@ -163,10 +164,10 @@ def test_distinct_count_by_text():
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| extend EventInfo_Time = ["EventInfo_Time"] / time(1d)'
-        '| summarize DistinctUsers = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
+        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
+        '| summarize ["DistinctUsers"] = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
         '| project ["EventInfo_Time"], ["DistinctUsers"]'
-        "| sort by ActiveUserMetric desc"
+        '| order by ["ActiveUserMetric"] desc'
     )
     assert query_compiled == query_expected
 
@@ -187,10 +188,10 @@ def test_distinct_count_alt_by_text():
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| extend EventInfo_Time = ["EventInfo_Time"] / time(1d)'
-        '| summarize DistinctUsers = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
+        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
+        '| summarize ["DistinctUsers"] = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
         '| project ["EventInfo_Time"], ["DistinctUsers"]'
-        "| sort by ActiveUserMetric desc"
+        '| order by ["ActiveUserMetric"] desc'
     )
 
     assert query_compiled == query_expected
@@ -240,13 +241,9 @@ def test_limit():
     sql = "logs"
     limit = 5
     query = select("*").select_from(TextAsFrom(text(sql), ["*"]).alias("inner_qry")).limit(limit)
-
     query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
-
     query_expected = 'let inner_qry = (["logs"]);' "inner_qry" "| take 5"
-
     assert query_compiled == query_expected
-
 
 def test_select_count():
     kql_query = "logs"
@@ -266,14 +263,52 @@ def test_select_count():
         'let inner_qry = (["logs"]);'
         "inner_qry"
         "| where Field1 > 1 and Field2 < 2"
-        "| summarize count = count() "
+        '| summarize ["count"] = count() '
         '| project ["count"]'
-        "| sort by count desc"
+        '| order by ["count"] desc'
         "| take 5"
     )
 
     assert query_compiled == query_expected
 
+def compiler_with_startofmonth_group_by():
+    metadata = MetaData()
+    sales_data = Table(
+        "SalesData",
+        metadata,
+        Column("order_date", String),
+        Column("product_line", String),
+        Column("sales", sqltypes.Float),
+    )
+    query = (
+        select(
+            [
+                func.startofmonth(sales_data.c.order_date).label("order_date"),
+                sales_data.c.product_line.label("product_line"),
+                func.sum(sales_data.c.sales).label("(Sales)"),
+            ]
+        )
+        .where(
+            text(
+                "order_date >= datetime('2003-01-01T00:00:00.000000') and order_date < datetime('2005-06-01T00:00:00.000000')"
+            )
+        )
+        .group_by(
+            func.startofmonth(sales_data.c.order_date),
+            sales_data.c.product_line,
+        )
+        .order_by(text('"(Sales)" DESC'))
+    )
+
+    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| extend ["order_date"] = startofmonth(["order_date"])'
+        '| summarize ["(Sales)"] = sum(["sales"]) by ["order_date"], ["product_line"]'
+        '| project ["order_date"], ["product_line"], ["(Sales)"]'
+        '| order by ["(Sales)"] desc'
+    )
+    assert query_compiled == query_expected
 
 def test_select_with_let():
     kql_query = "let x = 5; let y = 3; MyTable | where Field1 == x and Field2 == y"
