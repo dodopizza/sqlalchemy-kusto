@@ -22,7 +22,8 @@ aggregates_sql_to_kql = {
     "min": "min",
     "max": "max",
 }
-AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\w+)\s*\)?\s*\)"
+#AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\w+)\s*\)?\s*\)"
+AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\[?\"?\'?\w+\"?\]?)\s*\)?\s*\)"
 
 
 class UniversalSet:
@@ -36,6 +37,7 @@ class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
 
     def __init__(self, dialect, **kw):
         super().__init__(dialect, initial_quote='["', final_quote='"]', **kw)
+
 
 class KustoKqlCompiler(compiler.SQLCompiler):
     OPERATORS[operators.and_] = " and "
@@ -58,7 +60,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         **kwargs,
     ):
         logger.debug("Incoming query: %s", select_stmt)
-
         if len(select_stmt.get_final_froms()) != 1:
             raise NotSupportedError('Only single "select from" query is supported in kql compiler')
         compiled_query_lines = []
@@ -98,9 +99,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             compiled_query_lines.append(
                 f"| take {self.process(select_stmt._limit_clause, **kwargs)}"
             )  # pylint: disable=protected-access
-
         compiled_query_lines = list(filter(None, compiled_query_lines))
-
         compiled_query = "\n".join(compiled_query_lines)
         logger.warning("Compiled query: %s", compiled_query)
         return compiled_query
@@ -135,15 +134,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 column_name, column_alias = self._extract_column_name_and_alias(column)
                 column_alias = self._escape_and_quote_columns(column_alias, True)
                 # Do we have a group by clause ?
-                match_agg_cols = re.match(AGGREGATE_PATTERN, column_name, re.IGNORECASE)
                 # Do we have aggregate columns ?
-                if match_agg_cols:
+                kql_agg = self._extract_maybe_agg_column_parts(column_name)
+                if kql_agg:
                     has_aggregates = True
-                    aggregate_func, distinct_keyword, agg_column_name = match_agg_cols.groups()
-                    # Check if the aggregate function is count_distinct. This is case from superset
-                    # where we can use count(distinct or count_distinct)
-                    is_distinct = bool(distinct_keyword) or aggregate_func.casefold() == "count_distinct"
-                    kql_agg = self._sql_to_kql_aggregate(aggregate_func, agg_column_name, is_distinct)
                     summarize_columns.add(self._build_column_projection(kql_agg, column_alias))
                 # No group by clause
                 else:
@@ -152,7 +146,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     if column_alias and column_alias != column_name:
                         extend_columns.add(self._build_column_projection(column_name, column_alias, True))
                 if column_alias:
-                    projection_columns.append(self._escape_and_quote_columns(column_alias,True))
+                    projection_columns.append(self._escape_and_quote_columns(column_alias, True))
                 else:
                     projection_columns.append(self._escape_and_quote_columns(column_name))
             # group by columns
@@ -176,6 +170,18 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             "sort": sort_statement,
         }
 
+    @staticmethod
+    def _extract_maybe_agg_column_parts(column_name):
+        match_agg_cols = re.match(AGGREGATE_PATTERN, column_name, re.IGNORECASE)
+        if match_agg_cols and match_agg_cols.groups():
+            # Check if the aggregate function is count_distinct. This is case from superset
+            # where we can use count(distinct or count_distinct)
+            aggregate_func, distinct_keyword, agg_column_name = match_agg_cols.groups()
+            is_distinct = bool(distinct_keyword) or aggregate_func.casefold() == "count_distinct"
+            kql_agg = KustoKqlCompiler._sql_to_kql_aggregate(aggregate_func.lower(), agg_column_name, is_distinct)
+            return kql_agg
+        return None
+
     def _get_order_by(self, order_by_cols):
         unwrapped_order_by = []
         for elem in order_by_cols:
@@ -192,13 +198,12 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                         f"{self._escape_and_quote_columns(sort_parts[0],is_alias=True)} {sort_parts[1].lower()}"
                     )
                 elif len(sort_parts) == 1:
-                    unwrapped_order_by.append(self._escape_and_quote_columns(sort_parts[0],is_alias=True))
+                    unwrapped_order_by.append(self._escape_and_quote_columns(sort_parts[0], is_alias=True))
                 else:
                     unwrapped_order_by.append(elem.text.replace(" ASC", " asc").replace(" DESC", " desc"))
             else:
                 logger.warning("Unsupported order by clause: %s of type %s", elem, type(elem))
         return unwrapped_order_by
-
 
     def _group_by(self, group_by_cols):
         by_columns = set()
@@ -382,7 +387,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         if return_value:
             return return_value
         # Other summarize operators have to be looked up
-        aggregate_function = aggregates_sql_to_kql.get(sql_agg.split("(")[0])
+        aggregate_function = aggregates_sql_to_kql.get(sql_agg.lower().split("(")[0])
         if aggregate_function:
             return_value = f"{aggregate_function}({column_name_escaped})"
         return return_value
