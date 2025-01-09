@@ -206,23 +206,23 @@ def test_escape_and_quote_columns():
     assert KustoKqlCompiler._escape_and_quote_columns("EventInfo_Time / time(1d)") == '["EventInfo_Time"] / time(1d)'
 
 
-def test_sql_to_kql_aggregate():
-    assert KustoKqlCompiler._sql_to_kql_aggregate("count(*)") == "count()"
-    assert KustoKqlCompiler._sql_to_kql_aggregate("count", "UserId") == 'count(["UserId"])'
-    assert (
-        KustoKqlCompiler._sql_to_kql_aggregate("count(distinct", "CustomerId", is_distinct=True)
-        == 'dcount(["CustomerId"])'
-    )
-    assert (
-        KustoKqlCompiler._sql_to_kql_aggregate("count_distinct", "CustomerId", is_distinct=True)
-        == 'dcount(["CustomerId"])'
-    )
-    assert KustoKqlCompiler._sql_to_kql_aggregate("sum", "Sales") == 'sum(["Sales"])'
-    assert KustoKqlCompiler._sql_to_kql_aggregate("avg", "ResponseTime") == 'avg(["ResponseTime"])'
-    assert KustoKqlCompiler._sql_to_kql_aggregate("AVG", "ResponseTime") == 'avg(["ResponseTime"])'
-    assert KustoKqlCompiler._sql_to_kql_aggregate("min", "Size") == 'min(["Size"])'
-    assert KustoKqlCompiler._sql_to_kql_aggregate("max", "Area") == 'max(["Area"])'
-    assert KustoKqlCompiler._sql_to_kql_aggregate("unknown", "Column") is None
+@pytest.mark.parametrize(
+    "sql_aggregate, column_name, is_distinct, expected_kql",
+    [
+        ("count(*)", None, False, "count()"),
+        ("count", "UserId", False, 'count(["UserId"])'),
+        ("count(distinct", "CustomerId", True, 'dcount(["CustomerId"])'),
+        ("count_distinct", "CustomerId", True, 'dcount(["CustomerId"])'),
+        ("sum", "Sales", False, 'sum(["Sales"])'),
+        ("avg", "ResponseTime", False, 'avg(["ResponseTime"])'),
+        ("AVG", "ResponseTime", False, 'avg(["ResponseTime"])'),
+        ("min", "Size", False, 'min(["Size"])'),
+        ("max", "Area", False, 'max(["Area"])'),
+        ("unknown", "Column", False, None),
+    ],
+)
+def test_sql_to_kql_aggregate(sql_aggregate, column_name, is_distinct, expected_kql):
+    assert KustoKqlCompiler._sql_to_kql_aggregate(sql_aggregate, column_name, is_distinct) == expected_kql
 
 
 def test_use_table():
@@ -351,9 +351,9 @@ def test_schema_from_metadata(table_name: str, schema_name: str, expected_table_
         ("SUM(scores)", 'sum(["scores"])'),
         ('MIN("scores")', 'min(["scores"])'),
         ('MIN(["scores"])', 'min(["scores"])'),
-        ('max(scores)', 'max(["scores"])'),
-        ('startofmonth(somedate)', None),
-        ('startofmonth(somedate)/time(1d)', None),
+        ("max(scores)", 'max(["scores"])'),
+        ("startofmonth(somedate)", None),
+        ("startofmonth(somedate)/time(1d)", None),
     ],
 )
 def test_match_aggregates(column_name: str, expected_aggregate: str):
@@ -361,8 +361,9 @@ def test_match_aggregates(column_name: str, expected_aggregate: str):
     if expected_aggregate:
         assert kql_agg is not None
         assert kql_agg == expected_aggregate
-    else :
+    else:
         assert kql_agg is None
+
 
 @pytest.mark.parametrize(
     "query_table_name,expected_table_name",

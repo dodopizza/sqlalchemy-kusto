@@ -1,6 +1,6 @@
 import logging
 import re
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import Column, exc, sql
 from sqlalchemy.sql import compiler, operators, selectable
@@ -22,7 +22,7 @@ aggregates_sql_to_kql = {
     "min": "min",
     "max": "max",
 }
-#AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\w+)\s*\)?\s*\)"
+# AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\w+)\s*\)?\s*\)"
 AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\[?\"?\'?\w+\"?\]?)\s*\)?\s*\)"
 
 
@@ -107,7 +107,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def limit_clause(self, select, **kw):
         return ""
 
-    def _get_projection_or_summarize(self, select: selectable.Select) -> dict[str, str]:
+    def _get_projection_or_summarize(self, select: selectable.Select) -> Dict[str, str]:
         """Builds the ending part of the query either project or summarize"""
         columns = select.inner_columns
         group_by_cols = select._group_by_clauses  # pylint: disable=protected-access
@@ -171,7 +171,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         }
 
     @staticmethod
-    def _extract_maybe_agg_column_parts(column_name):
+    def _extract_maybe_agg_column_parts(column_name) -> Optional[str]:
         match_agg_cols = re.match(AGGREGATE_PATTERN, column_name, re.IGNORECASE)
         if match_agg_cols and match_agg_cols.groups():
             # Check if the aggregate function is count_distinct. This is case from superset
@@ -189,7 +189,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 nested_element = elem.element
                 unwrapped_order_by.append(
                     f"{self._escape_and_quote_columns(nested_element._order_by_label_element.name,is_alias=True)} "
-                    f"{'desc' if (nested_element.modifier == operators.desc_op) else 'asc'}"
+                    f"{'desc' if (nested_element.modifier is operators.desc_op) else 'asc'}"
                 )
             elif isinstance(elem, sql.elements.TextClause):
                 sort_parts = elem.text.split()
@@ -216,7 +216,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return by_columns
 
     @staticmethod
-    def _escape_and_quote_columns(name: str, is_alias=False):
+    def _escape_and_quote_columns(name: Optional[str], is_alias=False):
         if name is None:
             return None
         name = name.strip()
@@ -367,7 +367,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return query.replace(original, f'database("{unquoted_schema}").["{unquoted_table}"]', 1)
 
     @staticmethod
-    def _sql_to_kql_aggregate(sql_agg: str, column_name: str = None, is_distinct: bool = False) -> str:
+    def _sql_to_kql_aggregate(sql_agg: str, column_name: str = None, is_distinct: bool = False) -> Optional[str]:
         """
         Converts SQL aggregate function to KQL equivalent.
         If a column name is provided, applies it to the aggregate.
