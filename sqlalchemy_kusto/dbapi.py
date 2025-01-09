@@ -82,7 +82,9 @@ class Connection:
             )
         elif workload_identity:
             # Workload Identity
-            kcsb = KustoConnectionStringBuilder.with_azure_token_credential(cluster, WorkloadIdentityCredential())
+            kcsb = KustoConnectionStringBuilder.with_azure_token_credential(
+                cluster, WorkloadIdentityCredential(tenant_id=azure_ad_tenant_id)
+            )
         elif msi:
             # Managed Service Identity (MSI)
             if user_msi is None or user_msi == "":
