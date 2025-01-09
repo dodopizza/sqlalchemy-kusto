@@ -93,9 +93,7 @@ class Connection:
             # Managed Service Identity (MSI)
             if user_msi is None or user_msi == "":
                 # System managed identity
-                kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
-                    cluster
-                )
+                kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(cluster)
             else:
                 # user managed identity
                 kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
