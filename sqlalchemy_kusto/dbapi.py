@@ -1,6 +1,7 @@
 from collections import namedtuple
 from typing import Any, List, Optional, Tuple
 
+from azure.identity import WorkloadIdentityCredential
 from azure.kusto.data import ClientRequestProperties, KustoClient, KustoConnectionStringBuilder
 from azure.kusto.data._models import KustoResultColumn
 from azure.kusto.data.exceptions import KustoAuthenticationError, KustoServiceError
@@ -35,6 +36,7 @@ def connect(
     database: str,
     msi: bool = False,
     user_msi: str = None,
+    workload_identity:bool = False,
     azure_ad_client_id: str = None,
     azure_ad_client_secret: str = None,
     azure_ad_tenant_id: str = None,
@@ -51,6 +53,7 @@ class Connection:
         cluster: str,
         database: str,
         msi: bool = False,
+        workload_identity:bool = False,
         user_msi: str = None,
         azure_ad_client_id: str = None,
         azure_ad_client_secret: str = None,
@@ -68,6 +71,9 @@ class Connection:
                 app_key=azure_ad_client_secret,
                 authority_id=azure_ad_tenant_id,
             )
+        elif workload_identity:
+            # Workload Identity
+            kcsb = KustoConnectionStringBuilder.with_azure_token_credential(cluster, WorkloadIdentityCredential())
         elif msi:
             # Managed Service Identity (MSI)
             if user_msi is None or user_msi == "":
