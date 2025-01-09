@@ -36,13 +36,22 @@ def connect(
     database: str,
     msi: bool = False,
     user_msi: str = None,
-    workload_identity:bool = False,
+    workload_identity: bool = False,
     azure_ad_client_id: str = None,
     azure_ad_client_secret: str = None,
     azure_ad_tenant_id: str = None,
 ):
     """Return a connection to the database."""
-    return Connection(cluster, database, msi, user_msi, azure_ad_client_id, azure_ad_client_secret, azure_ad_tenant_id)
+    return Connection(
+        cluster,
+        database,
+        msi,
+        workload_identity,
+        user_msi,
+        azure_ad_client_id,
+        azure_ad_client_secret,
+        azure_ad_tenant_id,
+    )
 
 
 class Connection:
@@ -53,7 +62,7 @@ class Connection:
         cluster: str,
         database: str,
         msi: bool = False,
-        workload_identity:bool = False,
+        workload_identity: bool = False,
         user_msi: str = None,
         azure_ad_client_id: str = None,
         azure_ad_client_secret: str = None,
