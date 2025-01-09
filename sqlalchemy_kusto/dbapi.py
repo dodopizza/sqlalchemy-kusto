@@ -70,9 +70,14 @@ class Connection:
             )
         elif msi:
             # Managed Service Identity (MSI)
-            kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
-                cluster, client_id=user_msi
-            )
+            if user_msi is None or user_msi == "":
+                # System managed identity
+                kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(cluster)
+            else:
+                # user managed identity
+                kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
+                    cluster, client_id=user_msi
+                )
         else:
             # neither SP or MSI
             kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
