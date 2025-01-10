@@ -39,12 +39,12 @@ def connect(
     cluster: str,
     database: str,
     msi: bool = False,
-    workload_identity: bool = False,
     user_msi: str | None = None,
+    workload_identity: bool = False,
     azure_ad_client_id: str | None = None,
     azure_ad_client_secret: str | None = None,
     azure_ad_tenant_id: str | None = None,
-):
+):  # pylint: disable=too-many-positional-arguments
     """Return a connection to the database."""
     return Connection(
         cluster,
@@ -71,7 +71,7 @@ class Connection:
         azure_ad_client_id: str | None = None,
         azure_ad_client_secret: str | None = None,
         azure_ad_tenant_id: str | None = None,
-    ):
+    ):  # pylint: disable=too-many-positional-arguments
         self.closed = False
         self.cursors: list[Cursor] = []
         kcsb = None

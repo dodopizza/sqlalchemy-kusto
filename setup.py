@@ -13,7 +13,7 @@ REQUIREMENTS = [
 ]
 EXTRAS = {
     "dev": [
-        "black>=24.10.0",
+        "black>=24.8.0",
         "mypy>=1.14.1",
         "pytest>=8.3.4",
         "python-dotenv>=1.0.1",
