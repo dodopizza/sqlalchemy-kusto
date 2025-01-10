@@ -217,9 +217,7 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
     ):
         return []
 
-    def _check_unicode_returns(
-        self, connection: Connection, additional_tests: list[Any] | None = None
-    ) -> bool:
+    def _check_unicode_returns(self, connection: Connection, additional_tests: Optional[List[Any]] = None) -> bool:
         return True
 
     def _check_unicode_description(self, connection: Connection) -> bool:

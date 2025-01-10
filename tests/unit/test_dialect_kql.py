@@ -1,5 +1,3 @@
-import re
-
 import pytest
 import sqlalchemy as sa
 from sqlalchemy import (
@@ -11,15 +9,13 @@ from sqlalchemy import (
     column,
     create_engine,
     distinct,
-    func,
     literal_column,
     select,
     text,
 )
-from sqlalchemy.sql import sqltypes
 from sqlalchemy.sql.selectable import TextAsFrom
 
-from sqlalchemy_kusto.dialect_kql import AGGREGATE_PATTERN, KustoKqlCompiler
+from sqlalchemy_kusto.dialect_kql import KustoKqlCompiler
 
 engine = create_engine("kustokql+https://localhost/testdb")
 
