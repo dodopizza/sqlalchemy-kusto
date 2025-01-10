@@ -18,7 +18,7 @@ def check_closed(func):
 
     def decorator(self, *args, **kwargs):
         if self.closed:
-            raise ValueError("{klass} already closed".format(klass=self.__class__.__name__))
+            raise ValueError(f"{self.__class__.__name__} already closed")
         return func(self, *args, **kwargs)
 
     return decorator
@@ -39,11 +39,11 @@ def connect(
     cluster: str,
     database: str,
     msi: bool = False,
-    user_msi: Optional[str] = None,
+    user_msi: str | None = None,
     workload_identity: bool = False,
-    azure_ad_client_id: Optional[str] = None,
-    azure_ad_client_secret: Optional[str] = None,
-    azure_ad_tenant_id: Optional[str] = None,
+    azure_ad_client_id: str | None = None,
+    azure_ad_client_secret: str | None = None,
+    azure_ad_tenant_id: str | None = None,
 ):  # pylint: disable=too-many-positional-arguments
     """Return a connection to the database."""
     return Connection(
@@ -67,10 +67,10 @@ class Connection:
         database: str,
         msi: bool = False,
         workload_identity: bool = False,
-        user_msi: Optional[str] = None,
-        azure_ad_client_id: Optional[str] = None,
-        azure_ad_client_secret: Optional[str] = None,
-        azure_ad_tenant_id: Optional[str] = None,
+        user_msi: str | None = None,
+        azure_ad_client_id: str | None = None,
+        azure_ad_client_secret: str | None = None,
+        azure_ad_tenant_id: str | None = None,
     ):  # pylint: disable=too-many-positional-arguments
         self.closed = False
         self.cursors: list[Cursor] = []
@@ -86,12 +86,16 @@ class Connection:
             )
         elif workload_identity:
             # Workload Identity
-            kcsb = KustoConnectionStringBuilder.with_azure_token_credential(cluster, WorkloadIdentityCredential())
+            kcsb = KustoConnectionStringBuilder.with_azure_token_credential(
+                cluster, WorkloadIdentityCredential()
+            )
         elif msi:
             # Managed Service Identity (MSI)
             if user_msi is None or user_msi == "":
                 # System managed identity
-                kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(cluster)
+                kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
+                    cluster
+                )
             else:
                 # user managed identity
                 kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
@@ -229,7 +233,7 @@ class Cursor:
 
     @check_result
     @check_closed
-    def fetchmany(self, size: Optional[int] = None):
+    def fetchmany(self, size: int | None = None):
         """
         Fetches the next set of rows of a query result, returning a sequence of
         sequences (e.g. a list of tuples). An empty sequence is returned when

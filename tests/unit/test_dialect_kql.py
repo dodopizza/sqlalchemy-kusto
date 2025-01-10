@@ -56,41 +56,69 @@ def test_compiler_with_star():
     query = query.select_from(stmt)
     query = query.limit(10)
     query_compiled = str(query.compile(engine)).replace("\n", "")
-    query_expected = 'let virtual_table = (["logs"] | take 10);' "virtual_table" "| take __[POSTCOMPILE_param_1]"
+    query_expected = (
+        'let virtual_table = (["logs"] | take 10);'
+        "virtual_table"
+        "| take __[POSTCOMPILE_param_1]"
+    )
     assert query_compiled == query_expected
 
 
 def test_select_from_text():
-    query = select([column("Field1"), column("Field2")]).select_from(text("logs")).limit(100)
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query = (
+        select([column("Field1"), column("Field2")])
+        .select_from(text("logs"))
+        .limit(100)
+    )
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
     query_expected = '["logs"]| project ["Field1"], ["Field2"]| take 100'
     assert query_compiled == query_expected
 
 
 @pytest.mark.parametrize(
-    "f,expected",
+    ("f", "expected"),
     [
-        pytest.param(Column("Field1", String).in_(["1", "One"]), """["Field1"] in ('1', 'One')"""),
-        pytest.param(Column("Field1", String).notin_(["1", "One"]), """(["Field1"] not in ('1', 'One'))"""),
-        pytest.param(text("Field1 = '1'"), """Field1 == '1'"""),
-        pytest.param(Column("Field2", Integer).between(2, 4), """["Field2"] between (2..4)"""),
-        pytest.param(Column("Field2", Integer).is_(None), """isnull(["Field2"])"""),
-        # pytest.param(Column("Field1", String).contains("FIELD"), """["Field2"] has 'FIELD'"""),
-        pytest.param(Column("Field2", Integer).isnot(None), """isnotnull(["Field2"])"""),
         pytest.param(
-            (Column("Field2", Integer).isnot(None)).__and__(Column("Field1", String).notin_(["1", "One"])),
+            Column("Field1", String).in_(["1", "One"]), """["Field1"] in ('1', 'One')"""
+        ),
+        pytest.param(
+            Column("Field1", String).notin_(["1", "One"]),
+            """(["Field1"] not in ('1', 'One'))""",
+        ),
+        pytest.param(text("Field1 = '1'"), """Field1 == '1'"""),
+        pytest.param(
+            Column("Field2", Integer).between(2, 4), """["Field2"] between (2..4)"""
+        ),
+        pytest.param(Column("Field2", Integer).is_(None), """isnull(["Field2"])"""),
+        pytest.param(
+            Column("Field2", Integer).isnot(None), """isnotnull(["Field2"])"""
+        ),
+        pytest.param(
+            (Column("Field2", Integer).isnot(None)).__and__(
+                Column("Field1", String).notin_(["1", "One"])
+            ),
             """isnotnull(["Field2"]) and (["Field1"] not in ('1', 'One'))""",
         ),
         pytest.param(
-            (Column("Field2", Integer).isnot(None)).__or__(Column("Field1", String).notin_(["1", "One"])),
+            (Column("Field2", Integer).isnot(None)).__or__(
+                Column("Field1", String).notin_(["1", "One"])
+            ),
             """isnotnull(["Field2"]) or (["Field1"] not in ('1', 'One'))""",
         ),
     ],
 )
 def test_where_predicates(f, expected):
-    query = (select([column("Field1"), column("Field2")]).select_from(text("logs")).where(f)).limit(100)
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
-    query_expected = f"""["logs"]| where {expected}| project ["Field1"], ["Field2"]| take 100"""
+    query = (
+        select([column("Field1"), column("Field2")]).select_from(text("logs")).where(f)
+    ).limit(100)
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        f"""["logs"]| where {expected}| project ["Field1"], ["Field2"]| take 100"""
+    )
     assert query_compiled == query_expected
 
 
@@ -105,7 +133,9 @@ def test_group_by_text():
         .order_by(text("ActiveUserMetric DESC"))
     )
 
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]| extend ["ActiveUserMetric"] = ["ActiveUsers"], '
@@ -118,14 +148,17 @@ def test_group_by_text():
 
 
 def test_group_by_text_vaccine_dataset():
-    # SELECT country_name AS country_name FROM superset."CovidVaccineData" GROUP BY country_name ORDER BY country_name ASC
+    # SQL: SELECT country_name AS country_name FROM superset."CovidVaccineData" GROUP BY country_name
+    # ORDER BY country_name ASC - this is a simple query to get distinct country names
     query = (
         select([literal_column("country_name").label("country_name")])
         .select_from(text('superset."CovidVaccineData"'))
         .group_by(literal_column("country_name"))
         .order_by(text("country_name ASC"))
     )
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
     query_expected = (
         'database("superset").["CovidVaccineData"]| '
         'extend ["country_name"] = ["country_name"]| '
@@ -154,12 +187,19 @@ def test_distinct_count_by_text():
     event_col = literal_column('"EventInfo_Time" / time(1d)').label("EventInfo_Time")
     active_users_col = literal_column("ActiveUsers")
     query = (
-        select([event_col, sa.func.count(distinct(active_users_col)).label("DistinctUsers")])
+        select(
+            [
+                event_col,
+                sa.func.count(distinct(active_users_col)).label("DistinctUsers"),
+            ]
+        )
         .select_from(text("ActiveUsersLastMonth"))
         .group_by(literal_column('"EventInfo_Time" / time(1d)'))
         .order_by(text("ActiveUserMetric DESC"))
     )
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
@@ -183,7 +223,9 @@ def test_distinct_count_alt_by_text():
         .group_by(literal_column("EventInfo_Time / time(1d)"))
         .order_by(text("ActiveUserMetric DESC"))
     )
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
@@ -197,13 +239,19 @@ def test_distinct_count_alt_by_text():
 
 
 def test_escape_and_quote_columns():
-    assert KustoKqlCompiler._escape_and_quote_columns("EventInfo_Time") == '["EventInfo_Time"]'
+    assert (
+        KustoKqlCompiler._escape_and_quote_columns("EventInfo_Time")
+        == '["EventInfo_Time"]'
+    )
     assert KustoKqlCompiler._escape_and_quote_columns('["UserId"]') == '["UserId"]'
-    assert KustoKqlCompiler._escape_and_quote_columns("EventInfo_Time / time(1d)") == '["EventInfo_Time"] / time(1d)'
+    assert (
+        KustoKqlCompiler._escape_and_quote_columns("EventInfo_Time / time(1d)")
+        == '["EventInfo_Time"] / time(1d)'
+    )
 
 
 @pytest.mark.parametrize(
-    "sql_aggregate, column_name, is_distinct, expected_kql",
+    ("sql_aggregate", "column_name", "is_distinct", "expected_kql"),
     [
         ("count(*)", None, False, "count()"),
         ("count", "UserId", False, 'count(["UserId"])'),
@@ -218,7 +266,10 @@ def test_escape_and_quote_columns():
     ],
 )
 def test_sql_to_kql_aggregate(sql_aggregate, column_name, is_distinct, expected_kql):
-    assert KustoKqlCompiler._sql_to_kql_aggregate(sql_aggregate, column_name, is_distinct) == expected_kql
+    assert (
+        KustoKqlCompiler._sql_to_kql_aggregate(sql_aggregate, column_name, is_distinct)
+        == expected_kql
+    )
 
 
 def test_use_table():
@@ -233,15 +284,23 @@ def test_use_table():
     query = stream.select().limit(5)
     query_compiled = str(query.compile(engine)).replace("\n", "")
 
-    query_expected = '["logs"]' '| project ["Field1"], ["Field2"]| take __[POSTCOMPILE_param_1]'
+    query_expected = (
+        '["logs"]' '| project ["Field1"], ["Field2"]| take __[POSTCOMPILE_param_1]'
+    )
     assert query_compiled == query_expected
 
 
 def test_limit():
     sql = "logs"
     limit = 5
-    query = select("*").select_from(TextAsFrom(text(sql), ["*"]).alias("inner_qry")).limit(limit)
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query = (
+        select("*")
+        .select_from(TextAsFrom(text(sql), ["*"]).alias("inner_qry"))
+        .limit(limit)
+    )
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
     query_expected = 'let inner_qry = (["logs"]);' "inner_qry" "| take 5"
     assert query_compiled == query_expected
 
@@ -258,7 +317,9 @@ def test_select_count():
         .limit(5)
     )
 
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
 
     query_expected = (
         'let inner_qry = (["logs"]);'
@@ -275,9 +336,15 @@ def test_select_count():
 
 def test_select_with_let():
     kql_query = "let x = 5; let y = 3; MyTable | where Field1 == x and Field2 == y"
-    query = select("*").select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry")).limit(5)
+    query = (
+        select("*")
+        .select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
+        .limit(5)
+    )
 
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
 
     query_expected = (
         "let x = 5;"
@@ -315,7 +382,7 @@ def test_quotes():
 
 
 @pytest.mark.parametrize(
-    "schema_name,table_name,expected_table_name",
+    ("schema_name", "table_name", "expected_table_name"),
     [
         ("schema", "table", 'database("schema").["table"]'),
         ("schema", '"table.name"', 'database("schema").["table.name"]'),
@@ -326,7 +393,9 @@ def test_quotes():
         (None, "MyTable", '["MyTable"]'),
     ],
 )
-def test_schema_from_metadata(table_name: str, schema_name: str, expected_table_name: str):
+def test_schema_from_metadata(
+    table_name: str, schema_name: str, expected_table_name: str
+):
     metadata = MetaData(schema=schema_name) if schema_name else MetaData()
     stream = Table(
         table_name,
@@ -339,7 +408,7 @@ def test_schema_from_metadata(table_name: str, schema_name: str, expected_table_
 
 
 @pytest.mark.parametrize(
-    "column_name,expected_aggregate",
+    ("column_name", "expected_aggregate"),
     [
         ("AVG(Score)", 'avg(["Score"])'),
         ('AVG("2014")', 'avg(["2014"])'),
@@ -362,7 +431,7 @@ def test_match_aggregates(column_name: str, expected_aggregate: str):
 
 
 @pytest.mark.parametrize(
-    "query_table_name,expected_table_name",
+    ("query_table_name", "expected_table_name"),
     [
         ("schema.table", 'database("schema").["table"]'),
         ('schema."table.name"', 'database("schema").["table.name"]'),
@@ -376,9 +445,15 @@ def test_match_aggregates(column_name: str, expected_aggregate: str):
     ],
 )
 def test_schema_from_query(query_table_name: str, expected_table_name: str):
-    query = select("*").select_from(TextAsFrom(text(query_table_name), ["*"]).alias("inner_qry")).limit(5)
+    query = (
+        select("*")
+        .select_from(TextAsFrom(text(query_table_name), ["*"]).alias("inner_qry"))
+        .limit(5)
+    )
 
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
 
     query_expected = f"let inner_qry = ({expected_table_name});inner_qry| take 5"
     assert query_compiled == query_expected

@@ -2,8 +2,12 @@ import logging
 import uuid
 
 import pytest
-from azure.kusto.data import ClientRequestProperties, KustoClient, KustoConnectionStringBuilder
-from sqlalchemy import Column, Integer, MetaData, String, Table, case, create_engine, func, literal_column, select, text
+from azure.kusto.data import (
+    ClientRequestProperties,
+    KustoClient,
+    KustoConnectionStringBuilder,
+)
+from sqlalchemy import Column, MetaData, String, Table, create_engine, func, text
 from sqlalchemy.orm import sessionmaker
 
 from tests.integration.conftest import (
@@ -43,17 +47,19 @@ def test_group_by(temp_table_name):
     )
     query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
     with kql_engine.connect() as connection:
-        # f"SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}"
+        # SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}
         # convert the above query to using alchemy
         result = connection.execute(text(query_compiled))
         # There is Even and Empty only for this test, 2 distinct values
-        assert set([(x[0], x[1]) for x in result.fetchall()]) == set([(5, "value_1"), (4, "value_0")])
+        assert {(x[0], x[1]) for x in result.fetchall()} == {
+            (5, "value_1"),
+            (4, "value_0"),
+        }
 
 
 # Test without group
 def test_count_by(temp_table_name):
-    # f"SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}"
-    # convert the above query to using alchemy
+    # Convert the query: SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}
     table = Table(
         temp_table_name,
         metadata,
@@ -63,26 +69,27 @@ def test_count_by(temp_table_name):
     with kql_engine.connect() as connection:
         result = connection.execute(text(query_compiled))
         # There is Even and Empty only for this test, 2 distinct values
-        assert set([(x[0]) for x in result.fetchall()]) == set([9])
+        assert {(x[0]) for x in result.fetchall()} == {9}
 
 
 def test_distinct_counts_by(temp_table_name):
-    # f"SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}"
-    # convert the above query to using alchemy
+    # Convert to : SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}
     table = Table(
         temp_table_name,
         metadata,
     )
-    query = session.query(func.count(func.distinct(text("Text"))).label("tag_count")).select_from(table)
+    query = session.query(
+        func.count(func.distinct(text("Text"))).label("tag_count")
+    ).select_from(table)
     query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
     with kql_engine.connect() as connection:
         result = connection.execute(text(query_compiled))
         # There is Even and Empty only for this test, 2 distinct values
-        assert set([(x[0]) for x in result.fetchall()]) == set([2])
+        assert {(x[0]) for x in result.fetchall()} == {2}
 
 
 @pytest.mark.parametrize(
-    "f,label,expected",
+    ("f", "label", "expected"),
     [
         pytest.param(func.min(text("Id")), "Min", 1),
         pytest.param(func.max(text("Id")), "Max", 9),
@@ -90,8 +97,7 @@ def test_distinct_counts_by(temp_table_name):
     ],
 )
 def test_all_group_ops(f, label, expected, temp_table_name):
-    # f"SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}"
-    # convert the above query to using alchemy
+    # Convert : SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}
     table = Table(
         temp_table_name,
         metadata,
@@ -101,13 +107,15 @@ def test_all_group_ops(f, label, expected, temp_table_name):
     with kql_engine.connect() as connection:
         result = connection.execute(text(query_compiled))
         # There is Even and Empty only for this test, 2 distinct values
-        assert set([(x[0]) for x in result.fetchall()]) == set([expected])
+        assert {(x[0]) for x in result.fetchall()} == {expected}
 
 
 def get_kcsb():
     return (
         KustoConnectionStringBuilder.with_az_cli_authentication(KUSTO_URL)
-        if not AZURE_AD_CLIENT_ID and not AZURE_AD_CLIENT_SECRET and not AZURE_AD_TENANT_ID
+        if not AZURE_AD_CLIENT_ID
+        and not AZURE_AD_CLIENT_SECRET
+        and not AZURE_AD_TENANT_ID
         else KustoConnectionStringBuilder.with_aad_application_key_authentication(
             KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
         )
@@ -116,12 +124,20 @@ def get_kcsb():
 
 def _create_temp_table(table_name: str):
     client = KustoClient(get_kcsb())
-    response = client.execute(DATABASE, f".create table {table_name}(Id: int, Text: string)", ClientRequestProperties())
+    client.execute(
+        DATABASE,
+        f".create table {table_name}(Id: int, Text: string)",
+        ClientRequestProperties(),
+    )
 
 
 def _create_temp_fn(fn_name: str):
     client = KustoClient(get_kcsb())
-    response = client.execute(DATABASE, f".create function {fn_name}() {{ print now()}}", ClientRequestProperties())
+    client.execute(
+        DATABASE,
+        f".create function {fn_name}() {{ print now()}}",
+        ClientRequestProperties(),
+    )
 
 
 def _ingest_data_to_table(table_name: str):
@@ -130,17 +146,19 @@ def _ingest_data_to_table(table_name: str):
     str_data = "\n".join("{},{}".format(*p) for p in data_to_ingest.items())
     ingest_query = f""".ingest inline into table {table_name} <|
             {str_data}"""
-    response = client.execute(DATABASE, ingest_query, ClientRequestProperties())
+    client.execute(DATABASE, ingest_query, ClientRequestProperties())
 
 
 def _drop_table(table_name: str):
     client = KustoClient(get_kcsb())
 
     _ = client.execute(DATABASE, f".drop table {table_name}", ClientRequestProperties())
-    _ = client.execute(DATABASE, f".drop function {table_name}_fn", ClientRequestProperties())
+    _ = client.execute(
+        DATABASE, f".drop function {table_name}_fn", ClientRequestProperties()
+    )
 
 
-@pytest.fixture()
+@pytest.fixture
 def temp_table_name():
     return "_temp_" + uuid.uuid4().hex + "_kql"
 
@@ -153,4 +171,3 @@ def run_around_tests(temp_table_name):
     # A test function will be run at this point
     yield temp_table_name
     _drop_table(temp_table_name)
-    # assert files_before == files_after
