@@ -5,7 +5,7 @@ from sqlalchemy import create_engine
 from tests.integration.conftest import DATABASE, KUSTO_SQL_ALCHEMY_URL
 
 
-def test_operational_error():
+def test_operational_error() -> None:
     wrong_tenant_id = "wrong_tenant_id"
     azure_ad_client_id = "x"
     azure_ad_client_secret = "x"

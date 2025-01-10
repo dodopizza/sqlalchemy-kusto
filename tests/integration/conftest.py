@@ -3,8 +3,12 @@ import os
 from dotenv import load_dotenv
 from sqlalchemy.dialects import registry
 
-registry.register("kustosql.https", "sqlalchemy_kusto.dialect_sql", "KustoSqlHttpsDialect")
-registry.register("kustokql.https", "sqlalchemy_kusto.dialect_kql", "KustoKqlHttpsDialect")
+registry.register(
+    "kustosql.https", "sqlalchemy_kusto.dialect_sql", "KustoSqlHttpsDialect"
+)
+registry.register(
+    "kustokql.https", "sqlalchemy_kusto.dialect_kql", "KustoKqlHttpsDialect"
+)
 
 load_dotenv()
 AZURE_AD_CLIENT_ID = os.environ.get("AZURE_AD_CLIENT_ID", "")
