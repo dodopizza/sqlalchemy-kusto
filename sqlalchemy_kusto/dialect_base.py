@@ -166,7 +166,7 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
     def get_unique_constraints(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
         return []
 
-    def _check_unicode_returns(self, connection: Connection, additional_tests: List[Any] = None) -> bool:
+    def _check_unicode_returns(self, connection: Connection, additional_tests: Optional[List[Any]] = None) -> bool:
         return True
 
     def _check_unicode_description(self, connection: Connection) -> bool:

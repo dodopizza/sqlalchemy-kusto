@@ -14,7 +14,7 @@ def check_closed(func):
 
     def decorator(self, *args, **kwargs):
         if self.closed:
-            raise Exception("{klass} already closed".format(klass=self.__class__.__name__))
+            raise ValueError("{klass} already closed".format(klass=self.__class__.__name__))
         return func(self, *args, **kwargs)
 
     return decorator
@@ -25,7 +25,7 @@ def check_result(func):
 
     def decorator(self, *args, **kwargs):
         if self._results is None:  # pylint: disable=protected-access
-            raise Exception("Called before `execute`")
+            raise ValueError("Called before `execute`")
         return func(self, *args, **kwargs)
 
     return decorator
@@ -35,12 +35,12 @@ def connect(
     cluster: str,
     database: str,
     msi: bool = False,
-    user_msi: str = None,
+    user_msi: Optional[str] = None,
     workload_identity: bool = False,
-    azure_ad_client_id: str = None,
-    azure_ad_client_secret: str = None,
-    azure_ad_tenant_id: str = None,
-):
+    azure_ad_client_id: Optional[str] = None,
+    azure_ad_client_secret: Optional[str] = None,
+    azure_ad_tenant_id: Optional[str] = None,
+):  # pylint: disable=too-many-positional-arguments
     """Return a connection to the database."""
     return Connection(
         cluster,
@@ -63,11 +63,11 @@ class Connection:
         database: str,
         msi: bool = False,
         workload_identity: bool = False,
-        user_msi: str = None,
-        azure_ad_client_id: str = None,
-        azure_ad_client_secret: str = None,
-        azure_ad_tenant_id: str = None,
-    ):
+        user_msi: Optional[str] = None,
+        azure_ad_client_id: Optional[str] = None,
+        azure_ad_client_secret: Optional[str] = None,
+        azure_ad_tenant_id: Optional[str] = None,
+    ):  # pylint: disable=too-many-positional-arguments
         self.closed = False
         self.cursors: List[Cursor] = []
         kcsb = None
@@ -82,9 +82,7 @@ class Connection:
             )
         elif workload_identity:
             # Workload Identity
-            kcsb = KustoConnectionStringBuilder.with_azure_token_credential(
-                cluster, WorkloadIdentityCredential()
-            )
+            kcsb = KustoConnectionStringBuilder.with_azure_token_credential(cluster, WorkloadIdentityCredential())
         elif msi:
             # Managed Service Identity (MSI)
             if user_msi is None or user_msi == "":
@@ -98,7 +96,7 @@ class Connection:
         else:
             # neither SP or MSI
             kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
-        kcsb._set_connector_details("sqlalchemy-kusto", "0.1.0")  # pylint: disable=protected-access
+        kcsb._set_connector_details("sqlalchemy-kusto", "1.1.0")  # pylint: disable=protected-access
         self.kusto_client = KustoClient(kcsb)
         self.database = database
         self.properties = ClientRequestProperties()
@@ -162,7 +160,7 @@ class Cursor:
         self.current_item_index = 0
         self.properties = properties if properties is not None else ClientRequestProperties()
 
-    @property  # type: ignore
+    @property
     @check_result
     @check_closed
     def rowcount(self) -> int:
@@ -221,7 +219,7 @@ class Cursor:
 
     @check_result
     @check_closed
-    def fetchmany(self, size: int = None):
+    def fetchmany(self, size: Optional[int] = None):
         """
         Fetches the next set of rows of a query result, returning a sequence of
         sequences (e.g. a list of tuples). An empty sequence is returned when

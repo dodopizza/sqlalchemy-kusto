@@ -58,7 +58,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         lateral=False,
         from_linter=None,
         **kwargs,
-    ):
+    ):  # pylint: disable=too-many-positional-arguments
         logger.debug("Incoming query: %s", select_stmt)
         if len(select_stmt.get_final_froms()) != 1:
             raise NotSupportedError('Only single "select from" query is supported in kql compiler')
@@ -325,7 +325,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return str(column), None
 
     @staticmethod
-    def _build_column_projection(column_name: str, column_alias: str = None, is_extend: bool = False) -> str:
+    def _build_column_projection(column_name: str, column_alias: Optional[str] = None, is_extend: bool = False) -> str:
         """Generates column alias semantic for project statement"""
         if is_extend:
             return (
@@ -367,7 +367,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return query.replace(original, f'database("{unquoted_schema}").["{unquoted_table}"]', 1)
 
     @staticmethod
-    def _sql_to_kql_aggregate(sql_agg: str, column_name: str = None, is_distinct: bool = False) -> Optional[str]:
+    def _sql_to_kql_aggregate(
+        sql_agg: str, column_name: Optional[str] = None, is_distinct: bool = False
+    ) -> Optional[str]:
         """
         Converts SQL aggregate function to KQL equivalent.
         If a column name is provided, applies it to the aggregate.
