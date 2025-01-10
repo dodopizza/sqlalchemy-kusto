@@ -1,3 +1,4 @@
+from pathlib import Path
 from setuptools import find_packages, setup
 
 NAME = "sqlalchemy-kusto"
@@ -12,16 +13,16 @@ REQUIREMENTS = [
 ]
 EXTRAS = {
     "dev": [
-        "black>=24.8.0",
-        "isort>=5.13.2",
-        "mypy==1.13.0",
-        "pylint==3.3.2",
+        "black>=24.10.0",
+        "mypy>=1.14.1",
         "pytest>=8.3.4",
         "python-dotenv>=1.0.1",
+        "ruff>=0.8.6",
     ]
 }
 
-with open("README.md", "r", encoding="utf-8") as f:
+path = Path("README.md")
+with path.open(encoding="utf-8") as f:
     LONG_DESCRIPTION = f.read()
 
 setup(
@@ -51,7 +52,7 @@ setup(
     project_urls={
         "Bug Tracker": "https://github.com/dodopizza/sqlalchemy-kusto/issues",
     },
-    python_requires=">=3.8",
+    python_requires=">=3.10",
     version=VERSION,
     zip_safe=False,
 )

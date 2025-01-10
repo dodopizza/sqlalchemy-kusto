@@ -20,7 +20,7 @@ from sqlalchemy_kusto.dialect_kql import KustoKqlCompiler
 engine = create_engine("kustokql+https://localhost/testdb")
 
 
-def test_compiler_with_projection():
+def test_compiler_with_projection() -> None:
     statement_str = "logs | take 10"
     stmt = TextAsFrom(sa.text(statement_str), []).alias("virtual_table")
     query = sa.select(
@@ -46,7 +46,7 @@ def test_compiler_with_projection():
     assert query_compiled == query_expected
 
 
-def test_compiler_with_star():
+def test_compiler_with_star() -> None:
     statement_str = "logs | take 10"
     stmt = TextAsFrom(sa.text(statement_str), []).alias("virtual_table")
     query = sa.select(
@@ -56,15 +56,26 @@ def test_compiler_with_star():
     query = query.select_from(stmt)
     query = query.limit(10)
     query_compiled = str(query.compile(engine)).replace("\n", "")
-    query_expected = 'let virtual_table = (["logs"] | take 10);' "virtual_table" "| take __[POSTCOMPILE_param_1]"
+    query_expected = (
+        'let virtual_table = (["logs"] | take 10);'
+        "virtual_table"
+        "| take __[POSTCOMPILE_param_1]"
+    )
+
     assert query_compiled == query_expected
 
 
-def test_select_from_text():
-    query = select([column("Field1"), column("Field2")]).select_from(text("logs")).limit(100)
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+def test_select_from_text() -> None:
+    query = (
+        select([column("Field1"), column("Field2")])
+        .select_from(text("logs"))
+        .limit(100)
+    )
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
     query_expected = '["logs"]| project ["Field1"], ["Field2"]| take 100'
-    assert query_compiled == query_expected
+    assert query_compiled == query_expected  
 
 
 @pytest.mark.parametrize(
@@ -221,7 +232,7 @@ def test_sql_to_kql_aggregate(sql_aggregate, column_name, is_distinct, expected_
     assert KustoKqlCompiler._sql_to_kql_aggregate(sql_aggregate, column_name, is_distinct) == expected_kql
 
 
-def test_use_table():
+def test_use_table() -> None:
     metadata = MetaData()
     stream = Table(
         "logs",
@@ -237,16 +248,24 @@ def test_use_table():
     assert query_compiled == query_expected
 
 
-def test_limit():
+def test_limit() -> None:
     sql = "logs"
     limit = 5
-    query = select("*").select_from(TextAsFrom(text(sql), ["*"]).alias("inner_qry")).limit(limit)
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query = (
+        select("*")
+        .select_from(TextAsFrom(text(sql), ["*"]).alias("inner_qry"))
+        .limit(limit)
+    )
+
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+
     query_expected = 'let inner_qry = (["logs"]);' "inner_qry" "| take 5"
     assert query_compiled == query_expected
 
 
-def test_select_count():
+def test_select_count() -> None:
     kql_query = "logs"
     column_count = literal_column("count(*)").label("count")
     query = (
@@ -258,7 +277,9 @@ def test_select_count():
         .limit(5)
     )
 
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
 
     query_expected = (
         'let inner_qry = (["logs"]);'
@@ -273,11 +294,17 @@ def test_select_count():
     assert query_compiled == query_expected
 
 
-def test_select_with_let():
+def test_select_with_let() -> None:
     kql_query = "let x = 5; let y = 3; MyTable | where Field1 == x and Field2 == y"
-    query = select("*").select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry")).limit(5)
+    query = (
+        select("*")
+        .select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
+        .limit(5)
+    )
 
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
 
     query_expected = (
         "let x = 5;"
@@ -290,7 +317,7 @@ def test_select_with_let():
     assert query_compiled == query_expected
 
 
-def test_quotes():
+def test_quotes() -> None:
     quote = engine.dialect.identifier_preparer.quote
     metadata = MetaData()
     stream = Table(
@@ -315,7 +342,7 @@ def test_quotes():
 
 
 @pytest.mark.parametrize(
-    "schema_name,table_name,expected_table_name",
+    ("schema_name", "table_name", "expected_table_name"),
     [
         ("schema", "table", 'database("schema").["table"]'),
         ("schema", '"table.name"', 'database("schema").["table.name"]'),
@@ -326,7 +353,9 @@ def test_quotes():
         (None, "MyTable", '["MyTable"]'),
     ],
 )
-def test_schema_from_metadata(table_name: str, schema_name: str, expected_table_name: str):
+def test_schema_from_metadata(
+    table_name: str, schema_name: str, expected_table_name: str
+) -> None:
     metadata = MetaData(schema=schema_name) if schema_name else MetaData()
     stream = Table(
         table_name,
@@ -339,7 +368,7 @@ def test_schema_from_metadata(table_name: str, schema_name: str, expected_table_
 
 
 @pytest.mark.parametrize(
-    "column_name,expected_aggregate",
+    ("column_name", "expected_aggregate"),
     [
         ("AVG(Score)", 'avg(["Score"])'),
         ('AVG("2014")', 'avg(["2014"])'),
@@ -362,7 +391,7 @@ def test_match_aggregates(column_name: str, expected_aggregate: str):
 
 
 @pytest.mark.parametrize(
-    "query_table_name,expected_table_name",
+    ("query_table_name", "expected_table_name"),
     [
         ("schema.table", 'database("schema").["table"]'),
         ('schema."table.name"', 'database("schema").["table.name"]'),
@@ -375,10 +404,16 @@ def test_match_aggregates(column_name: str, expected_aggregate: str):
         ('["table"]', '["table"]'),
     ],
 )
-def test_schema_from_query(query_table_name: str, expected_table_name: str):
-    query = select("*").select_from(TextAsFrom(text(query_table_name), ["*"]).alias("inner_qry")).limit(5)
+def test_schema_from_query(query_table_name: str, expected_table_name: str) -> None:
+    query = (
+        select("*")
+        .select_from(TextAsFrom(text(query_table_name), ["*"]).alias("inner_qry"))
+        .limit(5)
+    )
 
-    query_compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", "")
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
 
     query_expected = f"let inner_qry = ({expected_table_name});inner_qry| take 5"
     assert query_compiled == query_expected

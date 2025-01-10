@@ -5,9 +5,84 @@ requires = [
 ]
 build-backend = "setuptools.build_meta"
 
-[tool.black]
+[tool.ruff]
+target-version = "py310"
+
+# https://beta.ruff.rs/docs/settings/#line-length
 line-length = 120
-target-version = ["py38", "py39", "py310", "py311"]
+
+# https://beta.ruff.rs/docs/settings/#select
+lint.select = [
+    "F",  # Pyflakes (https://beta.ruff.rs/docs/rules/#pyflakes-f)
+    "E",  # pycodestyle (https://beta.ruff.rs/docs/rules/#pycodestyle-e-w)
+    "C90",  # mccabe (https://beta.ruff.rs/docs/rules/#mccabe-c90)
+    "N",  # pep8-naming (https://beta.ruff.rs/docs/rules/#pep8-naming-n)
+    "D",  # pydocstyle (https://beta.ruff.rs/docs/rules/#pydocstyle-d)
+    "UP",  # pyupgrade (https://beta.ruff.rs/docs/rules/#pyupgrade-up)
+    "ANN",  # flake8-annotations (https://beta.ruff.rs/docs/rules/#flake8-annotations-ann)
+    "B",  # flake8-bugbear (https://beta.ruff.rs/docs/rules/#flake8-bugbear-b)
+    "C4",  # flake8-comprehensions (https://beta.ruff.rs/docs/rules/#flake8-comprehensions-c4)
+    "G",  # flake8-logging-format (https://beta.ruff.rs/docs/rules/#flake8-logging-format-g)
+    "T20",  # flake8-print (https://beta.ruff.rs/docs/rules/#flake8-print-t20)
+    "PT",  # flake8-pytest-style (https://beta.ruff.rs/docs/rules/#flake8-pytest-style-pt)
+    "TID",  # flake8-tidy-imports (https://beta.ruff.rs/docs/rules/#flake8-tidy-imports-tid)
+    "ARG",  # flake8-unused-arguments (https://beta.ruff.rs/docs/rules/#flake8-unused-arguments-arg)
+    "PTH",  # flake8-use-pathlib (https://beta.ruff.rs/docs/rules/#flake8-use-pathlib-pth)
+    "ERA",  # eradicate (https://beta.ruff.rs/docs/rules/#eradicate-era)
+    "PL",  # pylint (https://beta.ruff.rs/docs/rules/#pylint-pl)
+    "TRY",  # tryceratops (https://beta.ruff.rs/docs/rules/#tryceratops-try)
+    "RUF100",  # Unused noqa directive
+]
+
+# https://beta.ruff.rs/docs/settings/#ignore
+lint.ignore = [
+    "C901",  # too complex
+
+    # pycodestyle (https://beta.ruff.rs/docs/rules/#pydocstyle-d)
+    "D100",  # Missing docstring in public module
+    "D101",  # Missing docstring in public class
+    "D102",  # Missing docstring in public method
+    "D103",  # Missing docstring in public function
+    "D104",  # Missing docstring in public package
+    "D105",  # Missing docstring in magic method
+    "D106",  # Missing docstring in public nested class
+    "D107",  # Missing docstring in `__init__`
+    "D203",  # 1 blank line required before class docstring
+    "D205",  # 1 blank line required between summary line and description
+    "D212",  # Multi-line docstring summary should start at the first line
+
+    "N818",  # Exception name {name} should be named with an Error suffix;
+
+    "TRY003",  # Avoid specifying long messages outside the exception class
+
+    # flake8-annotations
+    "ANN001",  # Missing type annotation for function argument
+    "ANN002",  # Missing type annotation for `*args`
+    "ANN003",  # Missing type annotation for `**kwargs`
+    "ANN201",  # Missing return type annotation for public function
+    "ANN202",  # Missing return type annotation for private function
+    "ANN204",  # Missing return type annotation for special method
+    "ANN401",  # Dynamically typed expressions (typing.Any) are disallowed
+
+    "ARG002",  # Unused method argument
+
+    "PLR0913", # Too many arguments in function definition
+]
+
+[tool.ruff.lint.pycodestyle]
+max-doc-length = 120
+
+[tool.ruff.lint.pydocstyle]
+# Use Google-style docstrings
+convention = "google"
+
+[tool.ruff.lint.flake8-pytest-style]
+# Set the parametrize values type in tests.
+parametrize-values-type = "list"
+
+[tool.black]
+line-length = 88
+target-version = ["py310", "py311"]
 include = ".pyi?$"
 exclude = """
 (
@@ -24,36 +99,13 @@ exclude = """
 )
 """
 
-[tool.isort]
-line_length = 120
-multi_line_output = 3
-include_trailing_comma = true
-force_grid_wrap = 0
-use_parentheses = true
-
 [tool.mypy]
-python_version = "3.8"
+python_version = "3.10"
 strict_optional = true
 show_error_codes = true
 warn_redundant_casts = true
 warn_unused_ignores = true
-disallow_any_generics = true
+disallow_any_generics = false
 check_untyped_defs = true
 no_implicit_reexport = true
 ignore_missing_imports = true
-
-[tool.pylint.messages_control]
-max-line-length = 120
-disable = [
-    "consider-using-f-string",
-    "missing-class-docstring",
-    "missing-function-docstring",
-    "missing-module-docstring",
-    "no-self-use",
-    "protected-access",
-    "too-few-public-methods",
-    "too-many-arguments",
-    "too-many-locals",
-    "too-many-public-methods",
-    "unused-argument",
-]

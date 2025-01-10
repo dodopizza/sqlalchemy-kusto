@@ -1,6 +1,5 @@
 import logging
 import re
-from typing import Dict, List, Optional, Tuple
 
 from sqlalchemy import Column, exc, sql
 from sqlalchemy.sql import compiler, operators, selectable
@@ -27,7 +26,7 @@ AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\[?\"?\'?\w+
 
 
 class UniversalSet:
-    def __contains__(self, item):
+    def __contains__(self, item) -> bool:
         return True
 
 
@@ -35,7 +34,7 @@ class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
     # We want to quote all table and column names to prevent unconventional names usage
     reserved_words = UniversalSet()
 
-    def __init__(self, dialect, **kw):
+    def __init__(self, dialect, **kw) -> None:
         super().__init__(dialect, initial_quote='["', final_quote='"]', **kw)
 
 
@@ -58,10 +57,13 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         lateral=False,
         from_linter=None,
         **kwargs,
-    ):  # pylint: disable=too-many-positional-arguments
+    ) -> str:
         logger.debug("Incoming query: %s", select_stmt)
         if len(select_stmt.get_final_froms()) != 1:
-            raise NotSupportedError('Only single "select from" query is supported in kql compiler')
+            raise NotSupportedError(
+                'Only single "select from" query is supported in kql compiler'
+            )
+
         compiled_query_lines = []
 
         from_object = select_stmt.get_final_froms()[0]
@@ -69,7 +71,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             query = self._get_most_inner_element(from_object.element)
             (main, lets) = self._extract_let_statements(query.text)
             compiled_query_lines.extend(lets)
-            compiled_query_lines.append(f"let {from_object.name} = ({self._convert_schema_in_statement(main)});")
+            compiled_query_lines.append(
+                f"let {from_object.name} = ({self._convert_schema_in_statement(main)});"
+            )
             compiled_query_lines.append(from_object.name)
         elif hasattr(from_object, "name"):
             if from_object.schema is not None:
@@ -78,7 +82,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             unquoted_name = from_object.name.strip("\"'")
             compiled_query_lines.append(f'["{unquoted_name}"]')
         else:
-            compiled_query_lines.append(self._convert_schema_in_statement(from_object.text))
+            compiled_query_lines.append(
+                self._convert_schema_in_statement(from_object.text)
+            )
 
         projections_parts_dict = self._get_projection_or_summarize(select_stmt)
         if "extend" in projections_parts_dict:
@@ -94,11 +100,12 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             if statement_part:
                 compiled_query_lines.append(statement_part)
 
-        if select_stmt._limit_clause is not None:  # pylint: disable=protected-access
+        if select_stmt._limit_clause is not None:
             kwargs["literal_execute"] = True
             compiled_query_lines.append(
                 f"| take {self.process(select_stmt._limit_clause, **kwargs)}"
-            )  # pylint: disable=protected-access
+            )
+
         compiled_query_lines = list(filter(None, compiled_query_lines))
         compiled_query = "\n".join(compiled_query_lines)
         logger.warning("Compiled query: %s", compiled_query)
@@ -107,8 +114,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def limit_clause(self, select, **kw):
         return ""
 
-    def _get_projection_or_summarize(self, select: selectable.Select) -> Dict[str, str]:
-        """Builds the ending part of the query either project or summarize"""
+    def _get_projection_or_summarize(self, select: selectable.Select) -> dict:
+        """Builds the ending part of the query either project or summarize."""
         columns = select.inner_columns
         group_by_cols = select._group_by_clauses  # pylint: disable=protected-access
         order_by_cols = select._order_by_clauses  # pylint: disable=protected-access
@@ -297,7 +304,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return bool(re.match(pattern, name))
 
     def _get_most_inner_element(self, clause):
-        """Finds the most nested element in clause"""
+        """Finds the most nested element in clause."""
         inner_element = getattr(clause, "element", None)
         if inner_element is not None:
             return self._get_most_inner_element(inner_element)
@@ -305,8 +312,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return clause
 
     @staticmethod
-    def _extract_let_statements(clause) -> Tuple[str, List[str]]:
-        """Separates the final query from let statements"""
+    def _extract_let_statements(clause) -> tuple[str, list[str]]:
+        """Separates the final query from let statements."""
         rows = [s.strip() for s in clause.split(";")]
         main = next(filter(lambda row: not row.startswith("let"), rows), None)
 
@@ -317,7 +324,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return main, lets
 
     @staticmethod
-    def _extract_column_name_and_alias(column: Column) -> Tuple[str, Optional[str]]:
+    def _extract_column_name_and_alias(column: Column) -> tuple[str, str | None]:
         if hasattr(column, "element"):
             return str(column.element), column.name
         if hasattr(column, "name"):
@@ -325,16 +332,17 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return str(column), None
 
     @staticmethod
-    def _build_column_projection(column_name: str, column_alias: Optional[str] = None, is_extend: bool = False) -> str:
-        """Generates column alias semantic for project statement"""
+    def _build_column_projection(
+        column_name: str, column_alias: str | None = None, is_extend: bool = False
+    ) -> str:
+        """Generates column alias semantic for project statement."""
         if is_extend:
             return (
                 f"{column_alias} = {KustoKqlCompiler._escape_and_quote_columns(column_name)}"
                 if column_alias
                 else KustoKqlCompiler._escape_and_quote_columns(column_name)
             )
-        return f"{column_alias} = {column_name}" if column_alias else column_name
-
+          
     @staticmethod
     def _convert_schema_in_statement(query: str) -> str:
         """
@@ -351,7 +359,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             - ["schema"].["table"]        -> database("schema").["table"]
             - ["table"]                   -> ["table"]
         """
-
         pattern = r"^\[?([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")?\]?\.?\[?([a-zA-Z0-9]+\b|\"[a-zA-Z0-9 \-_.]+\")\]?"
         match = re.search(pattern, query)
         if not match:
@@ -364,7 +371,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             return query.replace(original, f'["{unquoted_table}"]', 1)
 
         unquoted_schema = match.group(1).strip("\"'")
-        return query.replace(original, f'database("{unquoted_schema}").["{unquoted_table}"]', 1)
+        return query.replace(
+            original, f'database("{unquoted_schema}").["{unquoted_table}"]', 1
+        )
 
     @staticmethod
     def _sql_to_kql_aggregate(
