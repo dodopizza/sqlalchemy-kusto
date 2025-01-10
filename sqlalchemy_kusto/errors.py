@@ -2,7 +2,7 @@ class Error(Exception):
     pass
 
 
-class Warning(Exception):  # pylint: disable-msg=redefined-builtin
+class Warning(Exception):
     pass
 
 

@@ -1,12 +1,20 @@
 import json
 from abc import ABC
 from types import ModuleType
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any
 
 from sqlalchemy.engine import Connection, default
 from sqlalchemy.engine.url import URL
 from sqlalchemy.sql import compiler
-from sqlalchemy.types import DATE, TIMESTAMP, BigInteger, Boolean, Float, Integer, String
+from sqlalchemy.types import (
+    DATE,
+    TIMESTAMP,
+    BigInteger,
+    Boolean,
+    Float,
+    Integer,
+    String,
+)
 
 import sqlalchemy_kusto
 
@@ -56,7 +64,7 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
     description_encoding = None
     supports_native_boolean = True
     supports_simple_order_by_label = True
-    _map_parse_connection_parameters: Dict[str, Any] = {
+    _map_parse_connection_parameters: dict[str, Any] = {
         "msi": parse_bool_argument,
         "azure_ad_client_id": str,
         "azure_ad_client_secret": str,
@@ -66,11 +74,11 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
     }
 
     @classmethod
-    def dbapi(cls) -> ModuleType:  # pylint: disable-msg=method-hidden
+    def dbapi(cls) -> ModuleType:
         return sqlalchemy_kusto
 
-    def create_connect_args(self, url: URL) -> Tuple[List[Any], Dict[str, Any]]:
-        kwargs: Dict[str, Any] = {
+    def create_connect_args(self, url: URL) -> tuple[list[Any], dict[str, Any]]:
+        kwargs: dict[str, Any] = {
             "cluster": "https://" + url.host,
             "database": url.database,
         }
@@ -84,21 +92,33 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
 
         return [], kwargs
 
-    def get_schema_names(self, connection: Connection, **kwargs) -> List[str]:
+    def get_schema_names(self, connection: Connection, **kwargs) -> list[str]:
         result = connection.execute(".show databases | project DatabaseName")
         return [row.DatabaseName for row in result]
 
-    def has_table(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs) -> bool:
+    def has_table(
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kwargs,
+    ) -> bool:
         return table_name in self.get_table_names(connection, schema)
 
-    def get_table_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
+    def get_table_names(
+        self, connection: Connection, schema: str | None = None, **kwargs
+    ) -> list[str]:
         # Schema is not used in Kusto cause database is written in the connection string
         result = connection.execute(".show tables | project TableName")
         return [row.TableName for row in result]
 
     def get_columns(
-        self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs
-    ) -> List[Dict[str, Any]]:
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kwargs,
+    ) -> list[dict[str, Any]]:
         table_search_query = f"""
             .show tables
             | where TableName == "{table_name}"
@@ -117,16 +137,23 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
                 query_result = connection.execute(function_schema)
                 rows = list(query_result)
                 entity_schema = json.loads(rows[0].Schema)
-                return [self.schema_definition(column) for column in entity_schema["OutputColumns"]]
-        entity_type = "table" if table_search_result.rowcount == 1 else "materialized-view"
+                return [
+                    self.schema_definition(column)
+                    for column in entity_schema["OutputColumns"]
+                ]
+        entity_type = (
+            "table" if table_search_result.rowcount == 1 else "materialized-view"
+        )
         query = f".show {entity_type} {table_name} schema as json"
         query_result = connection.execute(query)
         rows = list(query_result)
         entity_schema = json.loads(rows[0].Schema)
-        return [self.schema_definition(column) for column in entity_schema["OrderedColumns"]]
+        return [
+            self.schema_definition(column) for column in entity_schema["OrderedColumns"]
+        ]
 
     @staticmethod
-    def schema_definition(column):
+    def schema_definition(column) -> dict:
         return {
             "name": column["Name"],
             "type": kql_to_sql_types[column["CslType"].lower()],
@@ -134,39 +161,65 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
             "default": "",
         }
 
-    def get_view_names(self, connection: Connection, schema: Optional[str] = None, **kwargs) -> List[str]:
-        materialized_views = connection.execute(".show materialized-views | project Name")
+    def get_view_names(
+        self, connection: Connection, schema: str | None = None, **kwargs
+    ) -> list[str]:
+        materialized_views = connection.execute(
+            ".show materialized-views | project Name"
+        )
         # Functions are also Views.
         # Filtering no input functions specifically here as there is no way to pass parameters today
-        functions = connection.execute(".show functions | where Parameters =='()' | project Name")
+        functions = connection.execute(
+            ".show functions | where Parameters =='()' | project Name"
+        )
         materialized_view = [row.Name for row in materialized_views]
         view = [row.Name for row in functions]
         return materialized_view + view
 
-    def get_pk_constraint(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kw):
+    def get_pk_constraint(
+        self, connection: Connection, table_name: str, schema: str | None = None, **kw
+    ):
         return {"constrained_columns": [], "name": None}
 
     def get_foreign_keys(self, connection, table_name, schema=None, **kwargs):
         return []
 
-    def get_check_constraints(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
+    def get_check_constraints(
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kwargs,
+    ):
         return []
 
     def get_table_comment(
-        self, connection: Connection, table_name, schema: Optional[str] = None, **kwargs
-    ) -> Dict[str, Any]:
-        """Not implemented"""
+        self, connection: Connection, table_name, schema: str | None = None, **kwargs
+    ) -> dict[str, Any]:
+        """Not implemented."""
         return {"text": ""}
 
     def get_indexes(
-        self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs
-    ) -> List[Dict[str, Any]]:
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kwargs,
+    ) -> list[dict[str, Any]]:
         return []
 
-    def get_unique_constraints(self, connection: Connection, table_name: str, schema: Optional[str] = None, **kwargs):
+    def get_unique_constraints(
+        self,
+        connection: Connection,
+        table_name: str,
+        schema: str | None = None,
+        **kwargs,
+    ):
         return []
 
-    def _check_unicode_returns(self, connection: Connection, additional_tests: List[Any] = None) -> bool:
+    def _check_unicode_returns(
+        self, connection: Connection, additional_tests: list[Any] | None = None
+    ) -> bool:
         return True
 
     def _check_unicode_description(self, connection: Connection) -> bool:
@@ -176,9 +229,10 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         try:
             query = ".show tables"
             dbapi_connection.execute(query)
-            return True
         except sqlalchemy_kusto.OperationalError:
             return False
+        else:
+            return True
 
     def do_rollback(self, dbapi_connection: sqlalchemy_kusto.dbapi.Connection):
         pass
@@ -225,7 +279,13 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
     def get_isolation_level(self, dbapi_conn):
         pass
 
-    def get_view_definition(self, connection: Connection, view_name: str, schema: Optional[str] = None, **kwargs):
+    def get_view_definition(
+        self,
+        connection: Connection,
+        view_name: str,
+        schema: str | None = None,
+        **kwargs,
+    ):
         pass
 
     def get_primary_keys(self, connection, table_name, schema=None, **kw):

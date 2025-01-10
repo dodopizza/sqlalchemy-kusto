@@ -1,6 +1,5 @@
 from sqlalchemy_kusto.dbapi import connect
 
-# pylint: disable=redefined-builtin
 from sqlalchemy_kusto.errors import (
     DatabaseError,
     DataError,
@@ -31,7 +30,7 @@ __all__ = [
     "Warning",
 ]
 
-apilevel = "2.0"  # pylint: disable=invalid-name
+apilevel = "2.0"
 # Threads may share the module and connections
-threadsafety = 2  # pylint: disable=invalid-name
-paramstyle = "pyformat"  # pylint: disable=invalid-name
+threadsafety = 2
+paramstyle = "pyformat"

@@ -27,17 +27,24 @@ install-dev: # Install dev dependencies
 ##############################################################################
 # Development process
 ##############################################################################
-check: # Run formatters and linters
-	@echo "Running checkers..."
+format: 
+	@echo "Running formatters..."
 
-	@echo "\n1. Run $(GREEN_ITALIC)isort$(DEFAULT) to order imports."
-	$(PYTHON) -m isort --profile black .
+	@echo "\n1. Run $(GREEN_ITALIC)ruff$(DEFAULT) to format code."
+	$(PYTHON) -m ruff check --fix-only . 
 
 	@echo "\n2. Run $(GREEN_ITALIC)black$(DEFAULT) to format code."
 	$(PYTHON) -m black .
 
-	@echo "\n3. Run $(GREEN_ITALIC)pylint$(DEFAULT) to lint the project."
-	$(PYTHON) -m pylint setup.py sqlalchemy_kusto/
+
+check: # Run formatters and linters
+	@echo "Running checkers..."
+
+	@echo "\n1. Run $(GREEN_ITALIC)ruff$(DEFAULT) to check code."
+	$(PYTHON) -m ruff check .
+
+	@echo "\n2. Run $(GREEN_ITALIC)black$(DEFAULT) to check code formatting."
+	$(PYTHON) -m black . --check
 
 	@echo "\n4. Run $(GREEN_ITALIC)mypy$(DEFAULT) for type checking."
 	$(PYTHON) -m mypy .
