@@ -53,7 +53,6 @@ lint.ignore = [
 
     "N818",  # Exception name {name} should be named with an Error suffix;
 
-    "TRY002",  # Create your own exception
     "TRY003",  # Avoid specifying long messages outside the exception class
 
     # flake8-annotations

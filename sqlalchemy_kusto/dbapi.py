@@ -1,6 +1,7 @@
 from collections import namedtuple
 from typing import Any
 
+from azure.identity import WorkloadIdentityCredential
 from azure.kusto.data import (
     ClientRequestProperties,
     KustoClient,
@@ -17,7 +18,7 @@ def check_closed(func):
 
     def decorator(self, *args, **kwargs):
         if self.closed:
-            raise Exception(f"{self.__class__.__name__} already closed")
+            raise ValueError(f"{self.__class__.__name__} already closed")
         return func(self, *args, **kwargs)
 
     return decorator
@@ -28,7 +29,7 @@ def check_result(func):
 
     def decorator(self, *args, **kwargs):
         if self._results is None:
-            raise Exception("Called before `execute`")
+            raise ValueError("Called before `execute`")
         return func(self, *args, **kwargs)
 
     return decorator
@@ -38,6 +39,7 @@ def connect(
     cluster: str,
     database: str,
     msi: bool = False,
+    workload_identity: bool = False,
     user_msi: str | None = None,
     azure_ad_client_id: str | None = None,
     azure_ad_client_secret: str | None = None,
@@ -48,6 +50,7 @@ def connect(
         cluster,
         database,
         msi,
+        workload_identity,
         user_msi,
         azure_ad_client_id,
         azure_ad_client_secret,
@@ -63,6 +66,7 @@ class Connection:
         cluster: str,
         database: str,
         msi: bool = False,
+        workload_identity: bool = False,
         user_msi: str | None = None,
         azure_ad_client_id: str | None = None,
         azure_ad_client_secret: str | None = None,
@@ -80,15 +84,27 @@ class Connection:
                 app_key=azure_ad_client_secret,
                 authority_id=azure_ad_tenant_id,
             )
+        elif workload_identity:
+            # Workload Identity
+            kcsb = KustoConnectionStringBuilder.with_azure_token_credential(
+                cluster, WorkloadIdentityCredential()
+            )
         elif msi:
             # Managed Service Identity (MSI)
-            kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
-                cluster, client_id=user_msi
-            )
+            if user_msi is None or user_msi == "":
+                # System managed identity
+                kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
+                    cluster
+                )
+            else:
+                # user managed identity
+                kcsb = KustoConnectionStringBuilder.with_aad_managed_service_identity_authentication(
+                    cluster, client_id=user_msi
+                )
         else:
             # neither SP or MSI
             kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
-        kcsb._set_connector_details("sqlalchemy-kusto", "0.1.0")
+        kcsb._set_connector_details("sqlalchemy-kusto", "1.1.0")
         self.kusto_client = KustoClient(kcsb)
         self.database = database
         self.properties = ClientRequestProperties()
