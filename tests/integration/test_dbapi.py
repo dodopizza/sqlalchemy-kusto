@@ -18,6 +18,7 @@ def test_execute() -> None:
         KUSTO_URL,
         DATABASE,
         False,
+        False,
         None,
         azure_ad_client_id=AZURE_AD_CLIENT_ID,
         azure_ad_client_secret=AZURE_AD_CLIENT_SECRET,
