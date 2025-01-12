@@ -1,12 +1,12 @@
 from collections import namedtuple
 from typing import Any
 
-from azure.identity import DefaultAzureCredential
 from azure.kusto.data import (
     ClientRequestProperties,
     KustoClient,
     KustoConnectionStringBuilder,
 )
+from azure.identity import DefaultAzureCredential
 from azure.kusto.data._models import KustoResultColumn
 from azure.kusto.data.exceptions import KustoAuthenticationError, KustoServiceError
 
@@ -40,6 +40,7 @@ def connect(
     database: str,
     msi: bool = False,
     user_msi: str | None = None,
+    workload_identity: bool = False,
     azure_ad_client_id: str | None = None,
     azure_ad_client_secret: str | None = None,
     azure_ad_tenant_id: str | None = None,
@@ -49,6 +50,7 @@ def connect(
         cluster,
         database,
         msi,
+        workload_identity,
         user_msi,
         azure_ad_client_id,
         azure_ad_client_secret,
@@ -64,6 +66,7 @@ class Connection:
         cluster: str,
         database: str,
         msi: bool = False,
+        workload_identity: bool = False,
         user_msi: str | None = None,
         azure_ad_client_id: str | None = None,
         azure_ad_client_secret: str | None = None,
@@ -81,6 +84,10 @@ class Connection:
                 app_key=azure_ad_client_secret,
                 authority_id=azure_ad_tenant_id,
             )
+        elif workload_identity:
+            kcsb = KustoConnectionStringBuilder.with_azure_token_credential(
+                cluster, DefaultAzureCredential()
+            )
         elif msi:
             # Managed Service Identity (MSI)
             if user_msi is None or user_msi == "":
@@ -95,9 +102,7 @@ class Connection:
                 )
         else:
             # neither SP or MSI
-            kcsb = KustoConnectionStringBuilder.with_azure_token_credential(
-                cluster, DefaultAzureCredential()
-            )
+            kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
         kcsb._set_connector_details("sqlalchemy-kusto", "1.1.0")
         self.kusto_client = KustoClient(kcsb)
         self.database = database

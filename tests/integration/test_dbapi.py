@@ -19,6 +19,7 @@ def test_execute() -> None:
         DATABASE,
         False,
         user_msi=None,
+        workload_identity=False,
         azure_ad_client_id=AZURE_AD_CLIENT_ID,
         azure_ad_client_secret=AZURE_AD_CLIENT_SECRET,
         azure_ad_tenant_id=AZURE_AD_TENANT_ID,
