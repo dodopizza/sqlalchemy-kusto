@@ -58,7 +58,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         lateral=False,
         from_linter=None,
         **kwargs,
-    ):  # pylint: disable=too-many-positional-arguments
+    ):
         logger.debug("Incoming query: %s", select_stmt)
         if len(select_stmt.get_final_froms()) != 1:
             raise NotSupportedError(
@@ -100,11 +100,11 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             if statement_part:
                 compiled_query_lines.append(statement_part)
 
-        if select_stmt._limit_clause is not None:  # pylint: disable=protected-access
+        if select_stmt._limit_clause is not None:
             kwargs["literal_execute"] = True
             compiled_query_lines.append(
                 f"| take {self.process(select_stmt._limit_clause, **kwargs)}"
-            )  # pylint: disable=protected-access
+            )
         compiled_query_lines = list(filter(None, compiled_query_lines))
         compiled_query = "\n".join(compiled_query_lines)
         logger.warning("Compiled query: %s", compiled_query)
@@ -116,8 +116,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def _get_projection_or_summarize(self, select: selectable.Select) -> dict[str, str]:
         """Builds the ending part of the query either project or summarize."""
         columns = select.inner_columns
-        group_by_cols = select._group_by_clauses  # pylint: disable=protected-access
-        order_by_cols = select._order_by_clauses  # pylint: disable=protected-access
+        group_by_cols = select._group_by_clauses
+        order_by_cols = select._order_by_clauses
         summarize_statement = ""
         extend_statement = ""
         project_statement = ""
