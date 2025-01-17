@@ -85,9 +85,45 @@ def test_select_from_text():
         ),
         pytest.param(
             Column("Field1", String).notin_(["1", "One"]),
-            """(["Field1"] not in ('1', 'One'))""",
+            """(["Field1"] !in ('1', 'One'))""",
         ),
         pytest.param(text("Field1 = '1'"), """Field1 == '1'"""),
+        pytest.param(text("Field1 <> '1'"), """Field1 != '1'"""),
+        pytest.param(text("Field1 LIKE '%123%'"), """Field1 has_cs '123'"""),
+        pytest.param(text('Field1 LIKE "%123%"'), 'Field1 has_cs "123"'),
+        pytest.param(text("Field1 NOT LIKE '%123%'"), """Field1 !has_cs '123'"""),
+        pytest.param(text('Field1 NOT LIKE "%123%"'), 'Field1 !has_cs "123"'),
+        pytest.param(text("Field1 LIKE '123%'"), """Field1 startswith_cs '123'"""),
+        pytest.param(text('Field1 LIKE "123%"'), 'Field1 startswith_cs "123"'),
+        pytest.param(text("Field1 NOT LIKE '123%'"), """Field1 !startswith_cs '123'"""),
+        pytest.param(text('Field1 NOT LIKE "123%"'), 'Field1 !startswith_cs "123"'),
+        pytest.param(text("Field1 LIKE '%123'"), """Field1 endswith_cs '123'"""),
+        pytest.param(text('Field1 LIKE "%123"'), 'Field1 endswith_cs "123"'),
+        pytest.param(text("Field1 NOT LIKE '%123'"), """Field1 !endswith_cs '123'"""),
+        pytest.param(text('Field1 NOT LIKE "%123"'), 'Field1 !endswith_cs "123"'),
+        pytest.param(text("Field1 ILIKE '%123%'"), """Field1 has '123'"""),
+        pytest.param(text('Field1 ILIKE "%123%"'), 'Field1 has "123"'),
+        pytest.param(text("Field1 NOT ILIKE '%123%'"), """Field1 !has '123'"""),
+        pytest.param(text('Field1 NOT ILIKE "%123%"'), 'Field1 !has "123"'),
+        pytest.param(text("Field1 ILIKE '123%'"), """Field1 startswith '123'"""),
+        pytest.param(text('Field1 ILIKE "123%"'), 'Field1 startswith "123"'),
+        pytest.param(text("Field1 NOT ILIKE '123%'"), """Field1 !startswith '123'"""),
+        pytest.param(text('Field1 NOT ILIKE "123%"'), 'Field1 !startswith "123"'),
+        pytest.param(text("Field1 ILIKE '%123'"), """Field1 endswith '123'"""),
+        pytest.param(text('Field1 ILIKE "%123"'), 'Field1 endswith "123"'),
+        pytest.param(text("Field1 NOT ILIKE '%123'"), """Field1 !endswith '123'"""),
+        pytest.param(text('Field1 NOT ILIKE "%123"'), 'Field1 !endswith "123"'),
+        pytest.param(
+            Column("Field2", Integer).ilike("abc%"),
+            """tolower(["Field2"]) startswith_cs tolower('abc')""",
+        ),
+        pytest.param(
+            Column("Field2", Integer).like("%abc"), """["Field2"] endswith_cs 'abc'"""
+        ),
+        pytest.param(
+            Column("Field2", Integer).notlike("%abc"),
+            """["Field2"] !endswith_cs 'abc'""",
+        ),
         pytest.param(
             Column("Field2", Integer).between(2, 4), """["Field2"] between (2..4)"""
         ),
@@ -99,13 +135,13 @@ def test_select_from_text():
             (Column("Field2", Integer).isnot(None)).__and__(
                 Column("Field1", String).notin_(["1", "One"])
             ),
-            """isnotnull(["Field2"]) and (["Field1"] not in ('1', 'One'))""",
+            """isnotnull(["Field2"]) and (["Field1"] !in ('1', 'One'))""",
         ),
         pytest.param(
             (Column("Field2", Integer).isnot(None)).__or__(
                 Column("Field1", String).notin_(["1", "One"])
             ),
-            """isnotnull(["Field2"]) or (["Field1"] not in ('1', 'One'))""",
+            """isnotnull(["Field2"]) or (["Field1"] !in ('1', 'One'))""",
         ),
     ],
 )

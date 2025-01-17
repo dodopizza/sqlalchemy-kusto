@@ -299,21 +299,101 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         where_clause = re.sub(r"\s*>\s*=\s*", ">=", where_clause, flags=re.IGNORECASE)
         where_clause = where_clause.replace(">==", ">=")
         where_clause = where_clause.replace("<==", "<=")
+        where_clause = where_clause.replace("<>", "!=")
+        where_clause = re.sub(
+            r"(\s|^)lower\(", r"\1tolower(", where_clause, flags=re.IGNORECASE
+        )
+
         where_clause = re.sub(
             r"(\s)(<>|!=)\s*", r" \2 ", where_clause, flags=re.IGNORECASE
         )  # Handle '!=' and '<>'
         where_clause = re.sub(
             r"(\s)(<|<=|>|>=)\s*", r" \2 ", where_clause, flags=re.IGNORECASE
         )  # Comparison operators: <, <=, >, >=
-        # Step 3: Handle 'LIKE' -> 'has' for substring matching
-        where_clause = re.sub(
-            r"(\s)LIKE\s*", r"\1has ", where_clause, flags=re.IGNORECASE
-        )  # Replace LIKE with has
+
+        # Step 3: Handle '(I)LIKE' -> 'has' for substring matching
+        # support the % characters in the RHS at the beginning, end or both
+        like_regexp = r"(\s){like}\s+([a-z_]+\()?(['\"]){pre}([^%]+){post}\3(\))?"
+        if re.search(r"NOT I?LIKE", where_clause, re.IGNORECASE):
+            where_clause = re.sub(
+                like_regexp.format(like="NOT LIKE", pre="", post="%+"),
+                r"\1!startswith_cs \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+            where_clause = re.sub(
+                like_regexp.format(like="NOT LIKE", pre="%+", post=""),
+                r"\1!endswith_cs \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+            where_clause = re.sub(
+                like_regexp.format(like="NOT LIKE", pre="%+", post="%+"),
+                r"\1!has_cs \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+            where_clause = re.sub(
+                like_regexp.format(like="NOT ILIKE", pre="", post="%+"),
+                r"\1!startswith \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+            where_clause = re.sub(
+                like_regexp.format(like="NOT ILIKE", pre="%+", post=""),
+                r"\1!endswith \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+            where_clause = re.sub(
+                like_regexp.format(like="NOT ILIKE", pre="%+", post="%+"),
+                r"\1!has \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+        elif re.search(r"I?LIKE", where_clause, re.IGNORECASE):
+            where_clause = re.sub(
+                like_regexp.format(like="LIKE", pre="%+", post="%+"),
+                r"\1has_cs \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+            where_clause = re.sub(
+                like_regexp.format(like="LIKE", pre="", post="%+"),
+                r"\1startswith_cs \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+            where_clause = re.sub(
+                like_regexp.format(like="LIKE", pre="%+", post=""),
+                r"\1endswith_cs \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+            where_clause = re.sub(
+                like_regexp.format(like="ILIKE", pre="%+", post="%+"),
+                r"\1has \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+            where_clause = re.sub(
+                like_regexp.format(like="ILIKE", pre="", post="%+"),
+                r"\1startswith \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+            where_clause = re.sub(
+                like_regexp.format(like="ILIKE", pre="%+", post=""),
+                r"\1endswith \2\3\4\3\5",
+                where_clause,
+                flags=re.IGNORECASE,
+            )
+
         # Step 4: Handle 'IN' and 'NOT IN' operators (with lists inside parentheses)
         # We need to correctly handle multiple spaces around IN/NOT IN and lists inside parentheses
         where_clause = re.sub(
             r"(\s)NOT IN\s*\(([^)]+)\)",
-            r"\1not in (\2)",
+            r"\1!in (\2)",
             where_clause,
             flags=re.IGNORECASE,
         )  # NOT IN operator (list of values)
