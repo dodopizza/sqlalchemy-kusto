@@ -1,5 +1,3 @@
-from collections.abc import Generator
-from typing import Any
 import uuid
 
 import pytest
@@ -27,31 +25,31 @@ engine = create_engine(
 )
 
 
-def test_ping() -> None:
+def test_ping():
     conn = engine.connect()
     result = engine.dialect.do_ping(conn)
     assert result is True
 
 
-def test_get_table_names(temp_table_name: str) -> None:
+def test_get_table_names(temp_table_name):
     conn = engine.connect()
     result = engine.dialect.get_table_names(conn)
     assert temp_table_name in result
 
 
-def test_get_view_names(temp_table_name: str) -> None:
+def test_get_view_names(temp_table_name):
     conn = engine.connect()
     result = engine.dialect.get_view_names(conn)
     assert f"{temp_table_name}_fn" in result
 
 
-def test_get_columns(temp_table_name: str) -> None:
+def test_get_columns(temp_table_name):
     conn = engine.connect()
     columns_result = engine.dialect.get_columns(conn, temp_table_name)
     assert {"Id", "Text"} == {c["name"] for c in columns_result}
 
 
-def test_fetch_one(temp_table_name: str) -> None:
+def test_fetch_one(temp_table_name):
     engine.connect()
     result = engine.execute(f"select top 2 * from {temp_table_name} order by Id")
     assert result.fetchone() == (1, "value_1")
@@ -59,7 +57,7 @@ def test_fetch_one(temp_table_name: str) -> None:
     assert result.fetchone() is None
 
 
-def test_fetch_many(temp_table_name: str) -> None:
+def test_fetch_many(temp_table_name):
     engine.connect()
     result = engine.execute(f"select top 5 * from {temp_table_name} order by Id")
 
@@ -74,7 +72,7 @@ def test_fetch_many(temp_table_name: str) -> None:
     }
 
 
-def test_fetch_all(temp_table_name: str) -> None:
+def test_fetch_all(temp_table_name):
     engine.connect()
     result = engine.execute(f"select top 3 * from {temp_table_name} order by Id")
     assert {(x[0], x[1]) for x in result.fetchall()} == {
@@ -84,8 +82,8 @@ def test_fetch_all(temp_table_name: str) -> None:
     }
 
 
-def test_limit(temp_table_name: str) -> None:
-    limit = 5
+def test_limit(temp_table_name):
+    limit_rec_count = 5
     stream = Table(
         temp_table_name,
         MetaData(),
@@ -93,15 +91,15 @@ def test_limit(temp_table_name: str) -> None:
         Column("Text", String),
     )
 
-    query = stream.select().limit(limit)
+    query = stream.select().limit(limit_rec_count)
 
     engine.connect()
     result = engine.execute(query)
     result_length = len(result.fetchall())
-    assert result_length == limit
+    assert result_length == limit_rec_count
 
 
-def get_kcsb() -> Any:
+def get_kcsb():
     return (
         KustoConnectionStringBuilder.with_az_cli_authentication(KUSTO_URL)
         if not AZURE_AD_CLIENT_ID
@@ -113,7 +111,7 @@ def get_kcsb() -> Any:
     )
 
 
-def _create_temp_table(table_name: str) -> None:
+def _create_temp_table(table_name: str):
     client = KustoClient(get_kcsb())
     client.execute(
         DATABASE,
@@ -122,7 +120,7 @@ def _create_temp_table(table_name: str) -> None:
     )
 
 
-def _create_temp_fn(fn_name: str) -> None:
+def _create_temp_fn(fn_name: str):
     client = KustoClient(get_kcsb())
     client.execute(
         DATABASE,
@@ -131,7 +129,7 @@ def _create_temp_fn(fn_name: str) -> None:
     )
 
 
-def _ingest_data_to_table(table_name: str) -> None:
+def _ingest_data_to_table(table_name: str):
     client = KustoClient(get_kcsb())
     data_to_ingest = {i: "value_" + str(i) for i in range(1, 10)}
     str_data = "\n".join("{},{}".format(*p) for p in data_to_ingest.items())
@@ -140,7 +138,7 @@ def _ingest_data_to_table(table_name: str) -> None:
     client.execute(DATABASE, ingest_query, ClientRequestProperties())
 
 
-def _drop_table(table_name: str) -> None:
+def _drop_table(table_name: str):
     client = KustoClient(get_kcsb())
 
     _ = client.execute(DATABASE, f".drop table {table_name}", ClientRequestProperties())
@@ -150,12 +148,12 @@ def _drop_table(table_name: str) -> None:
 
 
 @pytest.fixture
-def temp_table_name() -> str:
+def temp_table_name():
     return "_temp_" + uuid.uuid4().hex
 
 
 @pytest.fixture(autouse=True)
-def run_around_tests(temp_table_name: str) -> Generator[str, None, None]:
+def run_around_tests(temp_table_name):
     _create_temp_table(temp_table_name)
     _create_temp_fn(f"{temp_table_name}_fn")
     _ingest_data_to_table(temp_table_name)
