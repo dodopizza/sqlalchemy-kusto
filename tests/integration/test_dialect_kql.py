@@ -143,6 +143,7 @@ def test_custom_filters(name,temp_table_name, operation, expected):
     test_table = Table(
         temp_table_name, metadata, Column("Id", Integer), Column("Text", String)
     )
+    logger.debug(f"Running test for {name}")
     operation_func = operation(test_table)
     query = (
         session.query(func.count(text("Id")).label("tag_count"))
