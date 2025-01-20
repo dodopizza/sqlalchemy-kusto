@@ -113,6 +113,68 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def limit_clause(self, select, **kw):
         return ""
 
+    def _visit_op_binary(self, binary, op_str, **kw):
+        kw["literal_binds"] = True
+        return f"{self._escape_and_quote_columns(binary.left.key)} {op_str} {self.process(binary.right, **kw)}"
+
+    def visit_not_like_op_binary(self, binary, operator, **kw):
+        return self._visit_op_binary(binary, "!has", **kw)
+
+    def visit_like_op_binary(self, binary, operator, **kw):
+        return self._visit_op_binary(binary, "has", **kw)
+
+    def visit_ilike_op_binary(self, binary, operator, **kw):
+        return self._visit_op_binary(binary, "contains", **kw)
+
+    def visit_not_ilike_op_binary(self, binary, operator, **kw):
+        return self._visit_op_binary(binary, "!contains", **kw)
+
+    def visit_endswith_op_binary(self, binary, operator, **kw):
+        return self._visit_op_binary(binary, "endswith", **kw)
+
+    def visit_startswith_op_binary(self, binary, operator, **kw):
+        return self._visit_op_binary(binary, "startswith", **kw)
+
+    def visit_not_startswith_op_binary(self, binary, operator, **kw):
+        return self._visit_op_binary(binary, "!startswith", **kw)
+
+    def visit_not_endswith_op_binary(self, binary, operator, **kw):
+        return self._visit_op_binary(binary, "!endswith", **kw)
+
+    def visit_column(
+        self,
+        column,
+        add_to_result_map=True,
+        include_table=False,
+        result_map_targets=None,
+        **kwargs,
+    ):
+        return self._escape_and_quote_columns(column.name)
+
+    def visit_select_statement_grouping(self, grouping, **kwargs):
+        return self._escape_and_quote_columns(grouping.element.name)
+
+    def visit_between_op_binary(self, binary, operator, **kw):
+        kw["literal_binds"] = True
+        if binary.right.clauses:
+            begin = self.process(binary.right.clauses[0], **kw)
+            end = self.process(binary.right.clauses[1], **kw)
+            return f"{self._escape_and_quote_columns(binary.left.key)} between ({begin}..{end})"
+        # fallback. This should not happen
+        return self._visit_op_binary(binary, "between", **kw)
+
+    def visit_not_between_op_binary(self, binary, operator, **kw):
+        if binary.right.clauses:
+            begin = self.process(binary.right.clauses[0], **kw)
+            end = self.process(binary.right.clauses[1], **kw)
+            return f"self._escape_and_quote_columns({binary.left.key}) !between ({begin}..{end})"
+        # fallback. This should not happen
+        return self._visit_op_binary(binary, "!between", **kw)
+
+    def visit_not_in_op_binary(self, binary, operator, **kw):
+        kw["literal_binds"] = True
+        return self._visit_op_binary(binary, "!in", **kw)
+
     def _get_projection_or_summarize(self, select: selectable.Select) -> dict[str, str]:
         """Builds the ending part of the query either project or summarize."""
         columns = select.inner_columns
@@ -305,35 +367,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         where_clause = re.sub(
             r"(\s)(<|<=|>|>=)\s*", r" \2 ", where_clause, flags=re.IGNORECASE
         )  # Comparison operators: <, <=, >, >=
-        # Step 3: Handle 'LIKE' -> 'has' for substring matching
-        where_clause = re.sub(
-            r"(\s)LIKE\s*", r"\1has ", where_clause, flags=re.IGNORECASE
-        )  # Replace LIKE with has
-        # Step 4: Handle 'IN' and 'NOT IN' operators (with lists inside parentheses)
-        # We need to correctly handle multiple spaces around IN/NOT IN and lists inside parentheses
-        where_clause = re.sub(
-            r"(\s)NOT IN\s*\(([^)]+)\)",
-            r"\1not in (\2)",
-            where_clause,
-            flags=re.IGNORECASE,
-        )  # NOT IN operator (list of values)
         where_clause = re.sub(
             r"(\s)IN\s*\(([^)]+)\)", r"\1in (\2)", where_clause, flags=re.IGNORECASE
         )  # IN operator (list of values)
-        # Handle BETWEEN operator (if needed)
-
-        where_clause = re.sub(
-            r"(\w+|\[\"[A-Za-z0-9_]+\"\]) (BETWEEN|between) (\d) (AND|and) (\d)",
-            r"\1 between (\3..\5)",
-            where_clause,
-            flags=re.IGNORECASE,
-        )
-        where_clause = re.sub(
-            r"(\w+) (BETWEEN|between) (\d) (AND|and) (\d)",
-            r"\1 between (\3..\5)",
-            where_clause,
-            flags=re.IGNORECASE,
-        )
         # Handle logical operators 'AND' and 'OR' to ensure the conditions are preserved
         # Replace AND with 'and' in KQL
         where_clause = re.sub(r"\s+AND\s+", r" and ", where_clause, flags=re.IGNORECASE)

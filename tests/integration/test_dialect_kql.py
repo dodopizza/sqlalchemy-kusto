@@ -7,8 +7,18 @@ from azure.kusto.data import (
     KustoClient,
     KustoConnectionStringBuilder,
 )
-from sqlalchemy import Column, MetaData, String, Table, create_engine, func, text
+from sqlalchemy import (
+    Column,
+    MetaData,
+    String,
+    Table,
+    create_engine,
+    func,
+    text,
+    Integer,
+)
 from sqlalchemy.orm import sessionmaker
+from sqlalchemy.ext.declarative import declarative_base
 
 from tests.integration.conftest import (
     AZURE_AD_CLIENT_ID,
@@ -31,6 +41,10 @@ kql_engine = create_engine(
 Session = sessionmaker(bind=kql_engine)
 session = Session()
 metadata = MetaData()
+
+
+# Setup the TestTable model and database engine
+Base = declarative_base()
 
 
 def test_group_by(temp_table_name):
@@ -110,6 +124,45 @@ def test_all_group_ops(f, label, expected, temp_table_name):
         assert {(x[0]) for x in result.fetchall()} == {expected}
 
 
+@pytest.mark.parametrize(
+    ("name","operation", "expected"),
+    [
+        ("like",lambda table: table.c.Text.like("value_0"), {(4, "value_0")}),
+        ("not-like",lambda table: table.c.Text.notlike("value_0"), {(5, "value_1")}),
+        ("startswith",
+            lambda table: table.c.Text.startswith("value"),
+            {(4, "value_0"), (5, "value_1")},
+        ),
+        ("endswith",lambda table: table.c.Text.endswith("_1"), {(5, "value_1")}),
+        ("ilike",lambda table: table.c.Text.ilike("value_"), {(4, "value_0"),(5, "value_1")}),
+        ("between",lambda table: table.c.Id.between(1, 6), {(3, "value_0"), (3, "value_1")}),
+    ],
+)
+def test_custom_filters(name,temp_table_name, operation, expected):
+    text_col = Column("Text", String)
+    test_table = Table(
+        temp_table_name, metadata, Column("Id", Integer), Column("Text", String)
+    )
+    operation_func = operation(test_table)
+    query = (
+        session.query(func.count(text("Id")).label("tag_count"))
+        .add_columns(text_col)
+        .select_from(test_table)
+        .filter(operation_func)
+        .group_by(text("Text"))
+        .order_by("tag_count")
+    )
+    query_compiled = str(
+        query.statement.compile(kql_engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    with kql_engine.connect() as connection:
+        # SELECT count(distinct (case when Id%2=0 THEN 'Even' end)) as tag_count FROM {temp_table_name}
+        # convert the above query to using alchemy
+        result = connection.execute(text(query_compiled))
+        # There is Even and Empty only for this test, 2 distinct values
+        assert {(x[0], x[1]) for x in result.fetchall()} == expected
+
+
 def get_kcsb():
     return (
         KustoConnectionStringBuilder.with_az_cli_authentication(KUSTO_URL)
@@ -151,7 +204,6 @@ def _ingest_data_to_table(table_name: str):
 
 def _drop_table(table_name: str):
     client = KustoClient(get_kcsb())
-
     _ = client.execute(DATABASE, f".drop table {table_name}", ClientRequestProperties())
     _ = client.execute(
         DATABASE, f".drop function {table_name}_fn", ClientRequestProperties()
