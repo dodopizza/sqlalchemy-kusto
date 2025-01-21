@@ -125,25 +125,34 @@ def test_all_group_ops(f, label, expected, temp_table_name):
 
 
 @pytest.mark.parametrize(
-    ("name","operation", "expected"),
+    ("name", "operation", "expected"),
     [
-        ("like",lambda table: table.c.Text.like("value_0"), {(4, "value_0")}),
-        ("not-like",lambda table: table.c.Text.notlike("value_0"), {(5, "value_1")}),
-        ("startswith",
+        ("like", lambda table: table.c.Text.like("value_0"), {(4, "value_0")}),
+        ("not-like", lambda table: table.c.Text.notlike("value_0"), {(5, "value_1")}),
+        (
+            "startswith",
             lambda table: table.c.Text.startswith("value"),
             {(4, "value_0"), (5, "value_1")},
         ),
-        ("endswith",lambda table: table.c.Text.endswith("_1"), {(5, "value_1")}),
-        ("ilike",lambda table: table.c.Text.ilike("value_"), {(4, "value_0"),(5, "value_1")}),
-        ("between",lambda table: table.c.Id.between(1, 6), {(3, "value_0"), (3, "value_1")}),
+        ("endswith", lambda table: table.c.Text.endswith("_1"), {(5, "value_1")}),
+        (
+            "ilike",
+            lambda table: table.c.Text.ilike("value_"),
+            {(4, "value_0"), (5, "value_1")},
+        ),
+        (
+            "between",
+            lambda table: table.c.Id.between(1, 6),
+            {(3, "value_0"), (3, "value_1")},
+        ),
     ],
 )
-def test_custom_filters(name,temp_table_name, operation, expected):
+def test_custom_filters(name, temp_table_name, operation, expected):
     text_col = Column("Text", String)
     test_table = Table(
         temp_table_name, metadata, Column("Id", Integer), Column("Text", String)
     )
-    logger.debug(f"Running test for {name}")
+    logger.debug("Running test for %s", name)
     operation_func = operation(test_table)
     query = (
         session.query(func.count(text("Id")).label("tag_count"))
