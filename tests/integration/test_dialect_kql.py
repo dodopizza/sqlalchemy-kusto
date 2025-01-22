@@ -145,6 +145,16 @@ def test_all_group_ops(f, label, expected, temp_table_name):
             lambda table: table.c.Id.between(1, 6),
             {(3, "value_0"), (3, "value_1")},
         ),
+        (
+            "not-in",
+            lambda table: table.c.Id.not_in([7, 8, 9, 10]),
+            {(3, "value_0"), (3, "value_1")},
+        ),
+        (
+            "in",
+            lambda table: table.c.Id.in_([1, 2, 3, 4, 5, 6]),
+            {(3, "value_0"), (3, "value_1")},
+        ),
     ],
 )
 def test_custom_filters(name, temp_table_name, operation, expected):
