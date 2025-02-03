@@ -5,6 +5,7 @@ import csv
 import io
 
 import pytest
+import sqlalchemy.types
 from azure.kusto.data import (
     ClientRequestProperties,
     KustoClient,
@@ -77,6 +78,29 @@ def test_count_by(temp_table_name):
         metadata,
     )
     query = session.query(func.count(text("Id")).label("tag_count")).select_from(table)
+    query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
+    with kql_engine.connect() as connection:
+        result = connection.execute(text(query_compiled))
+        # There is Even and Empty only for this test, 2 distinct values
+        assert {(x[0]) for x in result.fetchall()} == {9}
+
+
+def test_join_by(temp_table_name):
+    value_to_filter = 8
+    table1 = Table(
+        temp_table_name,
+        metadata,
+        Column("Id", sqlalchemy.types.Integer),
+        Column("Text", String),
+    )
+    table2 = Table("IdTable", MetaData(), Column("Id", sqlalchemy.types.Integer))
+
+    query = (
+        session.query(table2.c.Id, table1.c.Text)
+        .outerjoin(table2, table1.c.Id == table2.c.Id)
+        .filter(table2.c.Id > value_to_filter)
+    )
+
     query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
     with kql_engine.connect() as connection:
         result = connection.execute(text(query_compiled))
@@ -198,12 +222,27 @@ def _create_temp_table(table_name: str):
         ClientRequestProperties(),
     )
 
+    client.execute(
+        DATABASE,
+        ".create-merge table IdTable(Id: int)",
+        ClientRequestProperties(),
+    )
+
 
 def _create_temp_fn(fn_name: str):
     client = KustoClient(get_kcsb())
     client.execute(
         DATABASE,
         f".create function {fn_name}() {{ print now()}}",
+        ClientRequestProperties(),
+    )
+
+
+def _drop_temp_fn(fn_name: str):
+    client = KustoClient(get_kcsb())
+    client.execute(
+        DATABASE,
+        f".drop function {fn_name}",
         ClientRequestProperties(),
     )
 
@@ -227,15 +266,14 @@ def _ingest_data_to_table(table_name: str):
     ingest_query = f""".ingest inline into table {table_name} <|
             {str_data} with (policy_ingestiontime=true)"""
     client.execute(DATABASE, ingest_query, ClientRequestProperties())
+    ingest_ids_query = f""".set-or-append IdTable <| ({table_name} | project Id)"""
+    client.execute(DATABASE, ingest_ids_query, ClientRequestProperties())
 
 
 def _drop_table(table_name: str):
     client = KustoClient(get_kcsb())
-
     _ = client.execute(DATABASE, f".drop table {table_name}", ClientRequestProperties())
-    _ = client.execute(
-        DATABASE, f".drop function {table_name}_fn", ClientRequestProperties()
-    )
+    _ = client.execute(DATABASE, ".drop table IdTable", ClientRequestProperties())
 
 
 @pytest.fixture
@@ -251,3 +289,4 @@ def run_around_tests(temp_table_name):
     # A test function will be run at this point
     yield temp_table_name
     _drop_table(temp_table_name)
+    _drop_temp_fn(f"{temp_table_name}_fn")
