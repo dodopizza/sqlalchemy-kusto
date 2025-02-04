@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 
 NAME = "sqlalchemy-kusto"
 DESCRIPTION = "Azure Data Explorer (Kusto) dialect for SQLAlchemy"
-VERSION = "3.0.0"
+VERSION = "3.1.0"
 
 
 REQUIREMENTS = [
