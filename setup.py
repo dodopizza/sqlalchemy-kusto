@@ -17,7 +17,7 @@ EXTRAS = {
         "mypy>=1.14.1",
         "pytest>=8.3.4",
         "python-dotenv>=1.0.1",
-        "ruff>=0.8.6",
+        "ruff>=0.9.3",
     ]
 }
 
