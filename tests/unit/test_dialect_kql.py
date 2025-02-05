@@ -216,6 +216,25 @@ def test_is_kql_function():
     )
 
 
+def test_percentile_by_text():
+    event_col = literal_column("percentile(quantity_ordered, 99)").label("Measure 1")
+    query = select(
+        [
+            event_col,
+        ]
+    ).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    # raw query text from query
+    query_expected = (
+        '["SalesData"]'
+        '| summarize ["Measure 1"] = percentile(["quantity_ordered"], 99) '
+        '| project ["Measure 1"]'
+    )
+    assert query_compiled == query_expected
+
+
 def test_distinct_count_by_text():
     # create a query from select_query_text creating clause
     # 'SELECT "EventInfo_Time" / time(1d) AS "EventInfo_Time", count(DISTINCT ActiveUsers) AS "DistinctUsers"
