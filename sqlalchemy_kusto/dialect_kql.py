@@ -520,7 +520,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         # The count function is a special case because it can be used with or without a column name
         # We can also use it in count(Distinct column_name) format. This has to be handled separately
         if sql_agg and ("count" in sql_agg or "COUNT" in sql_agg):
-            if "*" in sql_agg or column_name == "*":
+            if "*" in sql_agg or column_name in ("*", "1"):
                 return_value = aggregates_sql_to_kql["count(*)"]
             elif is_distinct:
                 return_value = f"dcount({column_name_escaped})"
