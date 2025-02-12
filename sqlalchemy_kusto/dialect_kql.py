@@ -131,8 +131,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         kql_join = self._legacy_join(select_stmt, **kwargs)
         compiled_query_lines.append(kql_join)
         projections_parts_dict = self._get_projection_or_summarize(select_stmt)
-        if "extend" in projections_parts_dict:
-            compiled_query_lines.append(projections_parts_dict.pop("extend"))
 
         if select_stmt._whereclause is not None:
             kwargs["literal_binds"] = True
@@ -143,6 +141,11 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     where_clause_reformatted
                 )
                 compiled_query_lines.append(f"| where {converted_where_clause}")
+
+        if "extend" in projections_parts_dict:
+            compiled_query_lines.append(projections_parts_dict.pop("extend"))
+
+
 
         for statement_part in projections_parts_dict.values():
             if statement_part:
