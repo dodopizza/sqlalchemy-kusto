@@ -46,7 +46,7 @@ check: # Run formatters and linters
 	@echo "\n2. Run $(GREEN_ITALIC)black$(DEFAULT) to check code formatting."
 	$(PYTHON) -m black . --check
 
-	@echo "\n4. Run $(GREEN_ITALIC)mypy$(DEFAULT) for type checking."
+	@echo "\n3. Run $(GREEN_ITALIC)mypy$(DEFAULT) for type checking."
 	$(PYTHON) -m mypy .
 
 	@echo "Done.\n"

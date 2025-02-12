@@ -21,9 +21,8 @@ aggregates_sql_to_kql = {
     "min": "min",
     "max": "max",
 }
-AGGREGATE_PATTERN = (
-    r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\[?\"?\'?\w+\"?\]?)\s*\)?\s*\)"
-)
+kql_aggregates = {"percentile"}
+AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\[?\"?\'?\w+\"?\]?)\s*(,.+)*\)?\s*\)"
 
 
 class UniversalSet:
@@ -197,12 +196,14 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         if match_agg_cols and match_agg_cols.groups():
             # Check if the aggregate function is count_distinct. This is case from superset
             # where we can use count(distinct or count_distinct)
-            aggregate_func, distinct_keyword, agg_column_name = match_agg_cols.groups()
+            aggregate_func, distinct_keyword, agg_column_name, extra_params = (
+                match_agg_cols.groups()
+            )
             is_distinct = (
                 bool(distinct_keyword) or aggregate_func.casefold() == "count_distinct"
             )
             kql_agg = KustoKqlCompiler._sql_to_kql_aggregate(
-                aggregate_func.lower(), agg_column_name, is_distinct
+                aggregate_func.lower(), agg_column_name, is_distinct, extra_params
             )
             return kql_agg
         return None
@@ -500,7 +501,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     @staticmethod
     def _sql_to_kql_aggregate(
-        sql_agg: str, column_name: str | None = None, is_distinct: bool = False
+        sql_agg: str,
+        column_name: str | None = None,
+        is_distinct: bool = False,
+        extra_params: str | None = None,
     ) -> str | None:
         """
         Converts SQL aggregate function to KQL equivalent.
@@ -516,7 +520,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         # The count function is a special case because it can be used with or without a column name
         # We can also use it in count(Distinct column_name) format. This has to be handled separately
         if sql_agg and ("count" in sql_agg or "COUNT" in sql_agg):
-            if "*" in sql_agg or column_name == "*":
+            if "*" in sql_agg or column_name in ("*", "1"):
                 return_value = aggregates_sql_to_kql["count(*)"]
             elif is_distinct:
                 return_value = f"dcount({column_name_escaped})"
@@ -524,10 +528,17 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 return_value = f"count({column_name_escaped})"
         if return_value:
             return return_value
+
+        aggregation_function = sql_agg.lower().split("(")[0]
+
         # Other summarize operators have to be looked up
-        aggregate_function = aggregates_sql_to_kql.get(sql_agg.lower().split("(")[0])
-        if aggregate_function:
-            return_value = f"{aggregate_function}({column_name_escaped})"
+        sql_to_kql_aggregate_function = aggregates_sql_to_kql.get(aggregation_function)
+        if sql_to_kql_aggregate_function:
+            return_value = f"{sql_to_kql_aggregate_function}({column_name_escaped})"
+        elif aggregation_function in kql_aggregates:
+            return_value = (
+                f"{aggregation_function}({column_name_escaped}{extra_params})"
+            )
         return return_value
 
 
