@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 aggregates_sql_to_kql = {
     "count(*)": "count()",
+    "count(1)": "count()",
     "count": "count",
     "count(distinct": "dcount",
     "count(distinct(": "dcount",
@@ -247,10 +248,25 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return by_columns
 
     @staticmethod
+    def _convert_quoted_columns(kql_expression):
+    # Regex to find function calls with quoted column names
+        pattern = r'(\w+)\(\s*"([^"]+)"'
+
+        # Replace with the modified format
+        def replacer(match):
+            function_name = match.group(1)
+            column_name = match.group(2)
+            return f'{function_name}(["{column_name}"]'  # Wrap column in brackets
+
+        # Apply transformation
+        modified_expression = re.sub(pattern, replacer, kql_expression)
+
+        return modified_expression
+
+    @staticmethod
     def _escape_and_quote_columns(name: str | None, is_alias=False) -> str:
         if name is None:
             return ""
-        name = name.strip()
         if KustoKqlCompiler._is_kql_function(name) and not is_alias:
             return name
         if name.startswith('"') and name.endswith('"'):
@@ -368,10 +384,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     @staticmethod
     def _extract_column_name_and_alias(column: Column) -> tuple[str, str | None]:
         if hasattr(column, "element"):
-            return str(column.element), column.name
+            return KustoKqlCompiler._convert_quoted_columns(str(column.element)), KustoKqlCompiler._convert_quoted_columns(column.name)
         if hasattr(column, "name"):
-            return str(column.name), None
-        return str(column), None
+            return KustoKqlCompiler._convert_quoted_columns(str(column.name)), None
+        return KustoKqlCompiler._convert_quoted_columns(str(column)), None
 
     @staticmethod
     def _build_column_projection(
