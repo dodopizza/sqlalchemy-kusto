@@ -248,8 +248,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return by_columns
 
     @staticmethod
-    def _convert_quoted_columns(kql_expression):
-    # Regex to find function calls with quoted column names
+    def _convert_quoted_columns(kql_expression) -> str:
+        # Regex to find function calls with quoted column names
         pattern = r'(\w+)\(\s*"([^"]+)"'
 
         # Replace with the modified format
@@ -384,7 +384,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     @staticmethod
     def _extract_column_name_and_alias(column: Column) -> tuple[str, str | None]:
         if hasattr(column, "element"):
-            return KustoKqlCompiler._convert_quoted_columns(str(column.element)), KustoKqlCompiler._convert_quoted_columns(column.name)
+            return KustoKqlCompiler._convert_quoted_columns(
+                str(column.element)
+            ), KustoKqlCompiler._convert_quoted_columns(column.name)
         if hasattr(column, "name"):
             return KustoKqlCompiler._convert_quoted_columns(str(column.name)), None
         return KustoKqlCompiler._convert_quoted_columns(str(column)), None
