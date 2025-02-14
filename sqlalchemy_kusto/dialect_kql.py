@@ -300,9 +300,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         if name is None:
             return ""
         name = name.strip()
-        if KustoKqlCompiler._is_kql_function(name) and not is_alias:
-            return name
-        if KustoKqlCompiler._is_number_literal(name) and not is_alias:
+        if (
+            KustoKqlCompiler._is_kql_function(name)
+            or KustoKqlCompiler._is_number_literal(name)
+        ) and not is_alias:
             return name
         if name.startswith('"') and name.endswith('"'):
             name = name[1:-1]
@@ -574,7 +575,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return_value = None
         # The count function is a special case because it can be used with or without a column name
         # We can also use it in count(Distinct column_name) format. This has to be handled separately
-        if sql_agg and ("count" == sql_agg or "COUNT" == sql_agg):
+        if sql_agg and sql_agg in ("count", "COUNT"):
             if "*" in sql_agg or column_name in ("*", "1"):
                 return_value = aggregates_sql_to_kql["count(*)"]
             elif is_distinct:
