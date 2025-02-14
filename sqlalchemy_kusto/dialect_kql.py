@@ -21,7 +21,50 @@ aggregates_sql_to_kql = {
     "min": "min",
     "max": "max",
 }
-kql_aggregates = {"percentile"}
+kql_aggregates = {
+    "arg_max",
+    "arg_min",
+    "avg",
+    "avgif",
+    "binary_all_and",
+    "binary_all_or",
+    "binary_all_xor",
+    "buildschema",
+    "count",
+    "count_distinct",
+    "count_distinctif",
+    "countif",
+    "dcount",
+    "dcountif",
+    "hll",
+    "hll_if",
+    "hll_merge",
+    "make_bag",
+    "make_bag_if",
+    "make_list",
+    "make_list_if",
+    "max",
+    "maxif",
+    "min",
+    "minif",
+    "percentile",
+    "percentiles",
+    "percentilew",
+    "percentilesw",
+    "stdev",
+    "stdevif",
+    "stdevp",
+    "sum",
+    "sumif",
+    "take_any",
+    "take_anyif",
+    "tdigest",
+    "tdigest_merge",
+    "merge_tdigest",
+    "variance",
+    "varianceif",
+    "variancep",
+}
 AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\[?\"?\'?\w+\"?\]?)\s*(,.+)*\)?\s*\)"
 
 
@@ -206,6 +249,11 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 aggregate_func.lower(), agg_column_name, is_distinct, extra_params
             )
             return kql_agg
+
+        maybe_aggregation_function = column_name.lower().split("(")[0]
+        if maybe_aggregation_function in kql_aggregates:
+            return column_name
+
         return None
 
     def _get_order_by(self, order_by_cols):
@@ -253,6 +301,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             return ""
         name = name.strip()
         if KustoKqlCompiler._is_kql_function(name) and not is_alias:
+            return name
+        if KustoKqlCompiler._is_number_literal(name) and not is_alias:
             return name
         if name.startswith('"') and name.endswith('"'):
             name = name[1:-1]
@@ -427,6 +477,11 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         pattern = r"^[a-zA-Z_][a-zA-Z0-9_]*\s*\("
         return bool(re.match(pattern, name))
 
+    @staticmethod
+    def _is_number_literal(s: str) -> bool:
+        pattern = r"^[0-9]+$"
+        return bool(re.match(pattern, s))
+
     def _get_most_inner_element(self, clause):
         """Finds the most nested element in clause."""
         inner_element = getattr(clause, "element", None)
@@ -519,7 +574,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return_value = None
         # The count function is a special case because it can be used with or without a column name
         # We can also use it in count(Distinct column_name) format. This has to be handled separately
-        if sql_agg and ("count" in sql_agg or "COUNT" in sql_agg):
+        if sql_agg and ("count" == sql_agg or "COUNT" == sql_agg):
             if "*" in sql_agg or column_name in ("*", "1"):
                 return_value = aggregates_sql_to_kql["count(*)"]
             elif is_distinct:
