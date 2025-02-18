@@ -183,6 +183,33 @@ def test_group_by_text():
     assert query_compiled == query_expected
 
 
+@pytest.mark.parametrize(
+    ("f", "expected"),
+    [
+        pytest.param('bin("EventInfo_Time",1d)', 'bin(["EventInfo_Time"],1d)'),
+        pytest.param("bin(ingestion_time(),1d)", "bin(ingestion_time(),1d)"),
+    ],
+)
+def test_function_text(f: str, expected: str):
+    # create a query from select_query_text creating clause
+    event_col = literal_column(f).label("EventInfo_Time")
+    active_users_col = literal_column("ActiveUsers").label("ActiveUserMetric")
+    query = select([event_col, active_users_col]).select_from(
+        text("ActiveUsersLastMonth")
+    )
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["ActiveUsersLastMonth"]'
+        '| extend ["ActiveUserMetric"] = ["ActiveUsers"], '
+        '["EventInfo_Time"] = '
+        + expected
+        + '| project ["EventInfo_Time"], ["ActiveUserMetric"]'
+    )
+    assert query_compiled == query_expected
+
+
 def test_group_by_text_vaccine_dataset():
     # SQL: SELECT country_name AS country_name FROM superset."CovidVaccineData" GROUP BY country_name
     # ORDER BY country_name ASC - this is a simple query to get distinct country names
