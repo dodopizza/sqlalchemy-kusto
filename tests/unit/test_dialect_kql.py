@@ -262,6 +262,48 @@ def test_percentile_by_text():
     assert query_compiled == query_expected
 
 
+def test_dcountif_by_text():
+    event_col = literal_column(
+        "dcountif(year, city == 'Paris' or city in ('Madrid'))"
+    ).label("Measure 1")
+    query = select(
+        [
+            event_col,
+        ]
+    ).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    # raw query text from query
+    query_expected = (
+        '["SalesData"]'
+        "| summarize [\"Measure 1\"] = dcountif([\"year\"], city == 'Paris' or city in ('Madrid')) "
+        '| project ["Measure 1"]'
+    )
+    assert query_compiled == query_expected
+
+
+def test_countif_by_text():
+    event_col = literal_column("countif(city == 'Paris' OR city in ('Madrid'))").label(
+        "Measure 1"
+    )
+    query = select(
+        [
+            event_col,
+        ]
+    ).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    # raw query text from query
+    query_expected = (
+        '["SalesData"]'
+        "| summarize [\"Measure 1\"] = countif(city == 'Paris' OR city in ('Madrid')) "
+        '| project ["Measure 1"]'
+    )
+    assert query_compiled == query_expected
+
+
 def test_distinct_count_by_text():
     # create a query from select_query_text creating clause
     # 'SELECT "EventInfo_Time" / time(1d) AS "EventInfo_Time", count(DISTINCT ActiveUsers) AS "DistinctUsers"
@@ -329,28 +371,6 @@ def test_escape_and_quote_columns():
     assert (
         KustoKqlCompiler._escape_and_quote_columns("EventInfo_Time / time(1d)")
         == '["EventInfo_Time"] / time(1d)'
-    )
-
-
-@pytest.mark.parametrize(
-    ("sql_aggregate", "column_name", "is_distinct", "expected_kql"),
-    [
-        ("count(*)", None, False, "count()"),
-        ("count", "UserId", False, 'count(["UserId"])'),
-        ("count(distinct", "CustomerId", True, 'dcount(["CustomerId"])'),
-        ("count_distinct", "CustomerId", True, 'dcount(["CustomerId"])'),
-        ("sum", "Sales", False, 'sum(["Sales"])'),
-        ("avg", "ResponseTime", False, 'avg(["ResponseTime"])'),
-        ("AVG", "ResponseTime", False, 'avg(["ResponseTime"])'),
-        ("min", "Size", False, 'min(["Size"])'),
-        ("max", "Area", False, 'max(["Area"])'),
-        ("unknown", "Column", False, None),
-    ],
-)
-def test_sql_to_kql_aggregate(sql_aggregate, column_name, is_distinct, expected_kql):
-    assert (
-        KustoKqlCompiler._sql_to_kql_aggregate(sql_aggregate, column_name, is_distinct)
-        == expected_kql
     )
 
 
@@ -501,6 +521,22 @@ def test_schema_from_metadata(
         ("max(scores)", 'max(["scores"])'),
         ("startofmonth(somedate)", None),
         ("startofmonth(somedate)/time(1d)", None),
+        ("count(*)", "count()"),
+        ("count(1)", "count()"),
+        ("count(UserId)", 'count(["UserId"])'),
+        ("count(distinct CustomerId)", 'dcount(["CustomerId"])'),
+        ("count_distinct(CustomerId)", 'dcount(["CustomerId"])'),
+        (
+            "count_distinctif(order_qty, year > 2022)",
+            'count_distinctif(["order_qty"], year > 2022)',
+        ),
+        ("dcountif(1, year > 2024)", "dcountif(1, year > 2024)"),
+        ("sum(Sales)", 'sum(["Sales"])'),
+        ("avg(ResponseTime)", 'avg(["ResponseTime"])'),
+        ("AVG(ResponseTime)", 'avg(["ResponseTime"])'),
+        ("min(Size)", 'min(["Size"])'),
+        ("max(Area)", 'max(["Area"])'),
+        ("unknown(Column)", None),
     ],
 )
 def test_match_aggregates(column_name: str, expected_aggregate: str):
