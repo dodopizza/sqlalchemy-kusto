@@ -1,5 +1,8 @@
 import logging
 import uuid
+from datetime import datetime, timedelta
+import csv
+import io
 
 import pytest
 from azure.kusto.data import (
@@ -7,7 +10,16 @@ from azure.kusto.data import (
     KustoClient,
     KustoConnectionStringBuilder,
 )
-from sqlalchemy import Column, MetaData, String, Table, create_engine, func, text
+from sqlalchemy import (
+    Column,
+    MetaData,
+    String,
+    Table,
+    create_engine,
+    func,
+    text,
+    literal_column,
+)
 from sqlalchemy.orm import sessionmaker
 
 from tests.integration.conftest import (
@@ -110,6 +122,62 @@ def test_all_group_ops(f, label, expected, temp_table_name):
         assert {(x[0]) for x in result.fetchall()} == {expected}
 
 
+@pytest.mark.parametrize(
+    ("test_label", "group_fn", "expected", "compare_dates"),
+    [
+        pytest.param("StartOfDay", 'startofday("DateF")', 1, True),
+        pytest.param("Bin", 'bin("DateF",1d)', 1, True),
+        pytest.param("StartOfDayWithBin", 'bin(startofday("DateF"),1d)', 1, True),
+        pytest.param("StartOfDayWithBinUnquoted", "bin(startofday(DateF),1d)", 1, True),
+        pytest.param("StartOfDayUnquoted", "startofday(DateF)", 1, True),
+        pytest.param("BinUnquoted", "bin(DateF,1d)", 1, True),
+        pytest.param("IngestionTimeFunction", "bin(ingestion_time(),1d)", 9, False),
+        pytest.param("IngestionTimeFunction", "startofday(ingestion_time())", 9, False),
+    ],
+)
+# There is a minor issue in ho ingestion_time() is handled.
+# The following is an issue as in the project operator, the ingestion_time() is returned as null, probably because the
+# grouped records from the summarize line drop that. Nonetheless, the test is still valid as the ingestion_time() can
+# be used for grouping and also verifying if functions get quoted
+# | summarize ["tag_count"] = count(["Host"])  by bin(ingestion_time(), 1d)
+# | project ["tag_count"], bin(ingestion_time(), 1d)
+def test_date_bin_ops(test_label, group_fn, temp_table_name, expected, compare_dates):
+    table = Table(
+        temp_table_name,
+        metadata,
+    )
+    date_col = literal_column(group_fn)
+    query = (
+        session.query(func.count(text("Id")).label("tag_count"))
+        .add_columns(date_col)
+        .select_from(table)
+        .group_by(date_col)
+        .order_by(date_col)
+    )
+    query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
+    query_with_comment = f"""
+        //{test_label}
+        {query_compiled}
+    """
+    with kql_engine.connect() as connection:
+        result = connection.execute(text(query_with_comment))
+        actual_result = (
+            {(x[0], x[1].strftime("%Y-%m-%dT%H:%M:%SZ")) for x in result.fetchall()}
+            if compare_dates
+            else {(y[0]) for y in result.fetchall()}
+        )
+        now = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        expected_records = (
+            {
+                (expected, (now - timedelta(days=i)).strftime("%Y-%m-%dT%H:%M:%SZ"))
+                for i in range(9, 0, -1)
+            }
+            if compare_dates
+            else {expected}
+        )
+        assert actual_result == expected_records
+
+
 def get_kcsb():
     return (
         KustoConnectionStringBuilder.with_az_cli_authentication(KUSTO_URL)
@@ -126,7 +194,7 @@ def _create_temp_table(table_name: str):
     client = KustoClient(get_kcsb())
     client.execute(
         DATABASE,
-        f".create table {table_name}(Id: int, Text: string)",
+        f".create table {table_name}(Id: int, Text: string, DateF: datetime)",
         ClientRequestProperties(),
     )
 
@@ -142,10 +210,22 @@ def _create_temp_fn(fn_name: str):
 
 def _ingest_data_to_table(table_name: str):
     client = KustoClient(get_kcsb())
-    data_to_ingest = {i: "value_" + str(i % 2) for i in range(1, 10)}
-    str_data = "\n".join("{},{}".format(*p) for p in data_to_ingest.items())
+    now = datetime.now()
+    data_to_ingest = [
+        (
+            i,
+            "value_" + str(i % 2),
+            (now - timedelta(days=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        )
+        for i in range(1, 10)
+    ]
+    output = io.StringIO()
+    csv_writer = csv.writer(output, delimiter=",")
+    csv_writer.writerows(data_to_ingest)
+    # Get the CSV string content
+    str_data = output.getvalue().rstrip("\n").rstrip("\r")
     ingest_query = f""".ingest inline into table {table_name} <|
-            {str_data}"""
+            {str_data} with (policy_ingestiontime=true)"""
     client.execute(DATABASE, ingest_query, ClientRequestProperties())
 
 
