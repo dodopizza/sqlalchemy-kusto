@@ -145,8 +145,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         if "extend" in projections_parts_dict:
             compiled_query_lines.append(projections_parts_dict.pop("extend"))
 
-
-
         for statement_part in projections_parts_dict.values():
             if statement_part:
                 compiled_query_lines.append(statement_part)
