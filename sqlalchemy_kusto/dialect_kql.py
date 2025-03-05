@@ -5,7 +5,6 @@ from sqlalchemy import Column, exc, sql
 from sqlalchemy.sql import compiler, operators, selectable
 from sqlalchemy.sql.compiler import OPERATORS
 
-from sqlalchemy_kusto import NotSupportedError
 from sqlalchemy_kusto.dialect_base import KustoBaseDialect
 
 logger = logging.getLogger(__name__)
@@ -103,10 +102,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         **kwargs,
     ):
         logger.debug("Incoming query: %s", select_stmt)
-        if len(select_stmt.get_final_froms()) != 1:
-            raise NotSupportedError(
-                'Only single "select from" query is supported in kql compiler'
-            )
         compiled_query_lines = []
 
         from_object = select_stmt.get_final_froms()[0]
@@ -124,20 +119,31 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 compiled_query_lines.append(f'database("{unquoted_schema}").')
             unquoted_name = from_object.name.strip("\"'")
             compiled_query_lines.append(f'["{unquoted_name}"]')
+        elif hasattr(from_object, "left"):
+            # This is a case of a join.
+            compiled_query_lines.append(
+                self._convert_schema_in_statement(from_object.left.fullname)
+            )
         else:
             compiled_query_lines.append(
                 self._convert_schema_in_statement(from_object.text)
             )
-
+        kql_join = self._legacy_join(select_stmt, **kwargs)
+        compiled_query_lines.append(kql_join)
         projections_parts_dict = self._get_projection_or_summarize(select_stmt)
-        if "extend" in projections_parts_dict:
-            compiled_query_lines.append(projections_parts_dict.pop("extend"))
 
         if select_stmt._whereclause is not None:
+            kwargs["literal_binds"] = True
             where_clause = select_stmt._whereclause._compiler_dispatch(self, **kwargs)
             if where_clause:
-                converted_where_clause = self._sql_to_kql_where(where_clause)
+                where_clause_reformatted = self._remove_table_from_where(where_clause)
+                converted_where_clause = self._sql_to_kql_where(
+                    where_clause_reformatted
+                )
                 compiled_query_lines.append(f"| where {converted_where_clause}")
+
+        if "extend" in projections_parts_dict:
+            compiled_query_lines.append(projections_parts_dict.pop("extend"))
 
         for statement_part in projections_parts_dict.values():
             if statement_part:
@@ -154,6 +160,36 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return compiled_query
 
     def limit_clause(self, select, **kw):
+        return ""
+
+    def _legacy_join(self, select_stmt: selectable.Select, **kwargs):
+        """Consumes arguments from join() or outerjoin(), places them into a
+        consistent format with which to form the actual JOIN constructs.
+        """
+        kql_join = ""
+        on_clause = ""
+        for right, on_columns, _left, flags in select_stmt._legacy_setup_joins:
+            join_type = "inner"
+            if flags["isouter"]:
+                if flags["full"]:
+                    join_type = "fullouter"
+                else:
+                    join_type = "leftouter"
+            if on_columns is not None:
+                left_clause_col, _ = self._extract_column_name_and_alias(
+                    on_columns.left
+                )
+                right_clause_col, _ = self._extract_column_name_and_alias(
+                    on_columns.right
+                )
+                on_clause = (
+                    f"on $left.{self._escape_and_quote_columns(left_clause_col)} "
+                    f"== $right.{self._escape_and_quote_columns(right_clause_col)}"
+                )
+            kql_join = f"| join kind={join_type} ({self._escape_and_quote_columns(right.name)}) {on_clause}"
+        return kql_join
+
+    def visit_join(self, join, asfrom=True, from_linter=None, **kwargs):
         return ""
 
     def _get_projection_or_summarize(self, select: selectable.Select) -> dict[str, str]:
@@ -222,7 +258,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 if projection_columns
                 else ""
             )
-
         unwrapped_order_by = self._get_order_by(order_by_cols)
         sort_statement = (
             f"| order by {', '.join(unwrapped_order_by)}" if unwrapped_order_by else ""
@@ -344,6 +379,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     @staticmethod
     def _sql_to_kql_where(where_clause: str) -> str:
         where_clause = where_clause.strip().replace("\n", "")
+
         # Handle 'IS NULL' and 'IS NOT NULL' -> KQL equivalents
         where_clause = re.sub(
             r'(\["[^\]]+"\])\s*IS NULL',
@@ -488,6 +524,11 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         # Replace OR with 'or' in KQL
         where_clause = re.sub(r"\s+OR\s+", r" or ", where_clause, flags=re.IGNORECASE)
         return where_clause
+
+    @staticmethod
+    def _remove_table_from_where(where_clause: str) -> str:
+        regex = r'(?:\["?)(\w+)(["?]\])?\.'
+        return re.sub(regex, "", where_clause)
 
     @staticmethod
     def _is_kql_function(name: str) -> bool:
