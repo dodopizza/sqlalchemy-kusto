@@ -364,16 +364,19 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         # Remove surrounding spaces
         # Handle mathematical operations (wrap only the column part before operators)
         # Find the position of the first operator or space that separates the column name
-        for operator in ["/", "+", "-", "*"]:
-            if operator in name:
-                # Split the name at the first operator and wrap the left part
-                parts = name.split(operator, 1)
-                # Remove quotes if they exist at the edges
-                col_part = parts[0].strip()
-                if col_part.startswith('"') and col_part.endswith('"'):
-                    return f'["{col_part[1:-1].strip()}"] {operator} {parts[1].strip()}'
-                return f'["{col_part}"] {operator} {parts[1].strip()}'  # Wrap the column part
+        if not is_alias:
+            for operator in ["/", "+", "-", "*"]:
+                if operator in name:
+                    # Split the name at the first operator and wrap the left part
+                    parts = name.split(operator, 1)
+                    # Remove quotes if they exist at the edges
+                    col_part = parts[0].strip()
+                    if col_part.startswith('"') and col_part.endswith('"'):
+                        col_part = col_part[1:-1].strip()
+                    col_part = col_part.replace('"', '\\"')
+                    return f'["{col_part}"] {operator} {parts[1].strip()}'  # Wrap the column part
         # No operators found, just wrap the entire name
+        name = name.replace('"', '\\"')
         return f'["{name}"]'
 
     @staticmethod
