@@ -409,13 +409,13 @@ def test_limit():
 
 def test_select_count():
     kql_query = "logs"
-    column_count = literal_column("count(*)").label("count")
+    column_count = literal_column("count(*)").label("total-count")
     query = (
         select([column_count])
         .select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
         .where(text("Field1 > 1"))
         .where(text("Field2 < 2"))
-        .order_by(text("count DESC"))
+        .order_by(text("total-count DESC"))
         .limit(5)
     )
 
@@ -427,9 +427,9 @@ def test_select_count():
         'let inner_qry = (["logs"]);'
         "inner_qry"
         "| where Field1 > 1 and Field2 < 2"
-        '| summarize ["count"] = count() '
-        '| project ["count"]'
-        '| order by ["count"] desc'
+        '| summarize ["total-count"] = count() '
+        '| project ["total-count"]'
+        '| order by ["total-count"] desc'
         "| take 5"
     )
 
