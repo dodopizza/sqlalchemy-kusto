@@ -1,6 +1,5 @@
 from collections import namedtuple
-from typing import Any
-
+from typing import Any, Iterator
 from azure.kusto.data import (
     ClientRequestProperties,
     KustoClient,
@@ -12,7 +11,7 @@ from azure.kusto.data.exceptions import KustoAuthenticationError, KustoServiceEr
 
 from sqlalchemy_kusto import errors
 
-
+# Decorator to check if connection/cursor is closed
 def check_closed(func):
     """Decorator that checks if connection/cursor is closed."""
 
@@ -20,10 +19,9 @@ def check_closed(func):
         if self.closed:
             raise ValueError(f"{self.__class__.__name__} already closed")
         return func(self, *args, **kwargs)
-
     return decorator
 
-
+# Decorator to check if the cursor has results from `execute`
 def check_result(func):
     """Decorator that checks if the cursor has results from `execute`."""
 
@@ -31,10 +29,9 @@ def check_result(func):
         if self._results is None:
             raise ValueError("Called before `execute`")
         return func(self, *args, **kwargs)
-
     return decorator
 
-
+# Connection factory function
 def connect(
     cluster: str,
     database: str,
@@ -57,10 +54,9 @@ def connect(
         azure_ad_tenant_id,
     )
 
-
+# Connection class
 class Connection:
     """Connection to Kusto cluster."""
-
     def __init__(
         self,
         cluster: str,
@@ -73,7 +69,7 @@ class Connection:
         azure_ad_tenant_id: str | None = None,
     ):
         self.closed = False
-        self.cursors: list[Cursor] = []
+        self.cursors: list["Cursor"] = []
         kcsb = None
 
         if azure_ad_client_id and azure_ad_client_secret and azure_ad_tenant_id:
@@ -101,7 +97,7 @@ class Connection:
                     cluster, client_id=user_msi
                 )
         else:
-            # neither SP or MSI
+            # Fallback to Azure CLI-based authentication
             kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
         kcsb._set_connector_details("sqlalchemy-kusto", "1.1.0")
         self.kusto_client = KustoClient(kcsb)
@@ -110,9 +106,11 @@ class Connection:
 
     @check_closed
     def close(self):
-        """Close the connection now. Kusto does not require to close the connection."""
-        for cursor in self.cursors:
-            cursor.close()
+        """Close the connection now. Kusto does not require closing the connection."""
+        for cursor in self.cursors[:]:  # Iterate over a copy to avoid modification during iteration
+            if not cursor.closed:
+                cursor.close()
+        self.closed = True
 
     @check_closed
     def commit(self):
@@ -142,16 +140,15 @@ class Connection:
     def __exit__(self, *exc):
         self.close()
 
-
+# Cursor description row
 CursorDescriptionRow = namedtuple(
     "CursorDescriptionRow",
     ["name", "type", "display_size", "internal_size", "precision", "scale", "null_ok"],
 )
 
-
+# Cursor class
 class Cursor:
     """Connection cursor."""
-
     def __init__(
         self,
         kusto_client: KustoClient,
@@ -159,11 +156,13 @@ class Cursor:
         properties: ClientRequestProperties | None = None,
     ):
         self._results: list[tuple[Any, ...]] | None = None
+        self._iterator: Iterator[tuple[Any, ...]] | None = None
         self.kusto_client = kusto_client
         self.database = database
         self.closed = False
         self.description: list[CursorDescriptionRow] | None = None
         self.current_item_index = 0
+        self.arraysize = 1  # Default arraysize for fetchmany
         self.properties = (
             properties if properties is not None else ClientRequestProperties()
         )
@@ -172,14 +171,13 @@ class Cursor:
     @check_result
     @check_closed
     def rowcount(self) -> int:
-        """Counts the number of rows on a result."""
-        # Consumes the iterator
-        results = list(self._results)  # type: ignore # check_result decorator will ensure that value is not None
-        return len(results)
+        """Counts the number of rows in the result."""
+        return len(self._results) if self._results is not None else -1
 
     @check_closed
     def close(self):
         """Closes the cursor."""
+        self.closed = True
 
     @check_closed
     def execute(self, operation, parameters=None) -> "Cursor":
@@ -188,7 +186,6 @@ class Cursor:
             self.properties.set_option("query_language", "sql")
         else:
             self.properties.set_option("query_language", "kql")
-
         query = Cursor._apply_parameters(operation, parameters)
         query = query.rstrip()
         try:
@@ -199,14 +196,15 @@ class Cursor:
             raise errors.DatabaseError(str(kusto_error)) from kusto_error
         except KustoAuthenticationError as context_error:
             raise errors.OperationalError(str(context_error)) from context_error
-
         rows = []
         for row in server_response.primary_results[0]:
             rows.append(tuple(row.to_list()))
         self._results = rows
+        self._iterator = iter(rows)  # Initialize iterator for row iteration
         self.description = self._get_description_from_columns(
             server_response.primary_results[0].columns
         )
+        self.current_item_index = 0  # Reset index after execution
         return self
 
     @check_closed
@@ -227,7 +225,6 @@ class Cursor:
             item = self._results[self.current_item_index]  # type: ignore
             self.current_item_index += 1
             return item
-
         return None
 
     @check_result
@@ -238,12 +235,10 @@ class Cursor:
         sequences (e.g. a list of tuples). An empty sequence is returned when
         no more rows are available.
         """
-        if size:
-            items = self._results[self.current_item_index : self.current_item_index + size]  # type: ignore
-            self.current_item_index += size
-            return items
-
-        return self._results
+        size = size or self.arraysize
+        items = self._results[self.current_item_index : self.current_item_index + size]  # type: ignore
+        self.current_item_index += size
+        return items
 
     @check_result
     @check_closed
@@ -263,6 +258,20 @@ class Cursor:
     def setoutputsizes(self, sizes):
         """Not supported."""
 
+    @check_closed
+    def __iter__(self):
+        self._iterator = iter(self._results)  # type: ignore
+        return self
+
+    @check_result
+    @check_closed
+    def __next__(self):
+        if self._iterator is None:
+            raise ValueError("Iterator not initialized")
+        return next(self._iterator)
+
+    next = __next__
+
     @staticmethod
     def _get_description_from_columns(
         columns: list[KustoResultColumn],
@@ -280,17 +289,6 @@ class Cursor:
             )
             for column in columns
         ]
-
-    @check_closed
-    def __iter__(self):
-        return self
-
-    @check_result
-    @check_closed
-    def __next__(self):
-        return next(self._results)  # type: ignore
-
-    next = __next__
 
     @staticmethod
     def _apply_parameters(operation, parameters: dict) -> str:
@@ -316,9 +314,9 @@ class Cursor:
             return "'{}'".format(value.replace("'", "''"))
         if isinstance(value, bool):
             return "TRUE" if value else "FALSE"
-        if isinstance(value, int | float):
+        if isinstance(value, (int, float)):
             return str(value)
-        if isinstance(value, list | tuple):
+        if isinstance(value, (list, tuple)):
             return ", ".join(Cursor._escape(element) for element in value)
 
         return value
