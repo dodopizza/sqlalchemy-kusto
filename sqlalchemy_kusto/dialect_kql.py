@@ -268,9 +268,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
         # Process columns if they exist
         if columns is not None:
-            summarize_columns = set()
-            extend_columns = set()
-            projection_columns = []
+            summarize_columns: set[str] = set()
+            extend_columns: set[str] = set()
+            projection_columns: list[str] = []
             has_aggregates = False
 
             # Process each column (except *)
