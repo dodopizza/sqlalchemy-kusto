@@ -218,21 +218,28 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             for column in [c for c in columns if c.name != "*"]:
                 column_name, column_alias = self._extract_column_name_and_alias(column)
                 column_alias = self._escape_and_quote_columns(column_alias, True)
-                # Do we have a group by clause ?
-                # Do we have aggregate columns ?
-                kql_agg = self._extract_maybe_agg_column_parts(column_name)
-                if kql_agg:
-                    has_aggregates = True
-                    summarize_columns.add(
-                        self._build_column_projection(kql_agg, column_alias)
-                    )
-                # No group by clause
-                # Do the columns have aliases ?
-                # Add additional and to handle case where : SELECT column_name as column_name
-                elif column_alias and column_alias != column_name:
+
+                # Special handling for COUNT(*) as a column name
+                if column_name.upper() == "COUNT(*)" or column_name == "COUNT(*)":
                     extend_columns.add(
-                        self._build_column_projection(column_name, column_alias, True)
+                        f"{column_alias} = count()"
                     )
+                else:
+                    # Do we have a group by clause ?
+                    # Do we have aggregate columns ?
+                    kql_agg = self._extract_maybe_agg_column_parts(column_name)
+                    if kql_agg:
+                        has_aggregates = True
+                        summarize_columns.add(
+                            self._build_column_projection(kql_agg, column_alias)
+                        )
+                    # No group by clause
+                    # Do the columns have aliases ?
+                    # Add additional and to handle case where : SELECT column_name as column_name
+                    elif column_alias and column_alias != column_name:
+                        extend_columns.add(
+                            self._build_column_projection(column_name, column_alias, True)
+                        )
                 if column_alias:
                     projection_columns.append(
                         self._escape_and_quote_columns(column_alias, True)
@@ -352,29 +359,26 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         if name is None:
             return ""
 
+        result = None
+
         # Special handling for COUNT(*) as a column name
-        if name.upper() == "COUNT(*)":
+        if name.upper() == "COUNT(*)" or name == "COUNT(*)":
             if is_alias:
                 # When it's an alias, we need to quote it
-                return f'["COUNT(*)"]'
+                result = '["COUNT(*)"]'
             else:
                 # When it's a function, we need to convert it to count()
-                return "count()"
-
-        if (
+                result = "count()"
+        elif (
             KustoKqlCompiler._is_kql_function(name)
             or KustoKqlCompiler._is_number_literal(name)
         ) and not is_alias:
-            return name
-        if name.startswith('"') and name.endswith('"'):
-            name = name[1:-1]
-        # First, check if the name is already wrapped in ["ColumnName"] (escaped format)
-        if name.startswith('["') and name.endswith('"]'):
-            return name  # Return as is if already properly escaped
-        # Remove surrounding spaces
-        # Handle mathematical operations (wrap only the column part before operators)
-        # Find the position of the first operator or space that separates the column name
-        if not is_alias:
+            result = name
+        elif name.startswith('["') and name.endswith('"]'):
+            # Return as is if already properly escaped
+            result = name
+        elif not is_alias:
+            # Handle mathematical operations (wrap only the column part before operators)
             for operator in ["/", "+", "-", "*"]:
                 if operator in name:
                     # Split the name at the first operator and wrap the left part
@@ -384,10 +388,20 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     if col_part.startswith('"') and col_part.endswith('"'):
                         col_part = col_part[1:-1].strip()
                     col_part = col_part.replace('"', '\\"')
-                    return f'["{col_part}"] {operator} {parts[1].strip()}'  # Wrap the column part
-        # No operators found, just wrap the entire name
-        name = name.replace('"', '\\"')
-        return f'["{name}"]'
+                    result = f'["{col_part}"] {operator} {parts[1].strip()}'  # Wrap the column part
+                    break
+
+        # If no special case was matched, apply default formatting
+        if result is None:
+            # Handle quoted names
+            if name.startswith('"') and name.endswith('"'):
+                name = name[1:-1]
+
+            # No operators found, just wrap the entire name
+            name = name.replace('"', '\\"')
+            result = f'["{name}"]'
+
+        return result
 
     @staticmethod
     def _sql_to_kql_where(where_clause: str) -> str:
@@ -579,8 +593,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             column_alias = str(column.name)
 
             # Special handling for COUNT(*) as a column name
-            if column_name.upper() == "COUNT(*)":
-                return column_name, column_alias
+            if column_name.upper() == "COUNT(*)" or column_name == "COUNT(*)":
+                return "COUNT(*)", column_alias
 
             return KustoKqlCompiler._convert_quoted_columns(
                 column_name
@@ -588,14 +602,14 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         if hasattr(column, "name"):
             column_name = str(column.name)
             # Special handling for COUNT(*) as a column name
-            if column_name.upper() == "COUNT(*)":
-                return column_name, None
+            if column_name.upper() == "COUNT(*)" or column_name == "COUNT(*)":
+                return "COUNT(*)", None
             return KustoKqlCompiler._convert_quoted_columns(column_name), None
 
         column_str = str(column)
         # Special handling for COUNT(*) as a column name
-        if column_str.upper() == "COUNT(*)":
-            return column_str, None
+        if column_str.upper() == "COUNT(*)" or column_str == "COUNT(*)":
+            return "COUNT(*)", None
         return KustoKqlCompiler._convert_quoted_columns(column_str), None
 
     @staticmethod
