@@ -374,7 +374,10 @@ def test_escape_and_quote_columns():
     )
     # Test COUNT(*) handling
     assert KustoKqlCompiler._escape_and_quote_columns("COUNT(*)") == "count()"
-    assert KustoKqlCompiler._escape_and_quote_columns("COUNT(*)", is_alias=True) == '["COUNT(*)"]'
+    assert (
+        KustoKqlCompiler._escape_and_quote_columns("COUNT(*)", is_alias=True)
+        == '["COUNT(*)"]'
+    )
 
 
 def test_use_table():
