@@ -372,6 +372,9 @@ def test_escape_and_quote_columns():
         KustoKqlCompiler._escape_and_quote_columns("EventInfo_Time / time(1d)")
         == '["EventInfo_Time"] / time(1d)'
     )
+    # Test COUNT(*) handling
+    assert KustoKqlCompiler._escape_and_quote_columns("COUNT(*)") == "count()"
+    assert KustoKqlCompiler._escape_and_quote_columns("COUNT(*)", is_alias=True) == '["COUNT(*)"]'
 
 
 def test_use_table():
@@ -430,6 +433,37 @@ def test_select_count():
         '| summarize ["total-count"] = count() '
         '| project ["total-count"]'
         '| order by ["total-count"] desc'
+        "| take 5"
+    )
+
+    assert query_compiled == query_expected
+
+
+def test_drill_by_with_count_star():
+    """Test that simulates the drill-by functionality with COUNT(*) as a column name."""
+    # This test simulates what happens in Superset's drill-by functionality
+    # where COUNT(*) is used as a column name
+    kql_query = "logs"
+
+    # In drill-by, Superset might use COUNT(*) directly as a column name
+    column_count = column("COUNT(*)").label("count_value")
+
+    query = (
+        select([column_count])
+        .select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
+        .limit(5)
+    )
+
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+
+    # The expected result should properly handle COUNT(*) as a column name
+    query_expected = (
+        'let inner_qry = (["logs"]);'
+        "inner_qry"
+        '| extend ["count_value"] = count()'
+        '| project ["count_value"]'
         "| take 5"
     )
 

@@ -351,6 +351,16 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def _escape_and_quote_columns(name: str | None, is_alias=False) -> str:
         if name is None:
             return ""
+
+        # Special handling for COUNT(*) as a column name
+        if name.upper() == "COUNT(*)":
+            if is_alias:
+                # When it's an alias, we need to quote it
+                return f'["COUNT(*)"]'
+            else:
+                # When it's a function, we need to convert it to count()
+                return "count()"
+
         if (
             KustoKqlCompiler._is_kql_function(name)
             or KustoKqlCompiler._is_number_literal(name)
@@ -565,12 +575,28 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     @staticmethod
     def _extract_column_name_and_alias(column: Column) -> tuple[str, str | None]:
         if hasattr(column, "element"):
+            column_name = str(column.element)
+            column_alias = str(column.name)
+
+            # Special handling for COUNT(*) as a column name
+            if column_name.upper() == "COUNT(*)":
+                return column_name, column_alias
+
             return KustoKqlCompiler._convert_quoted_columns(
-                str(column.element)
-            ), KustoKqlCompiler._convert_quoted_columns(column.name)
+                column_name
+            ), KustoKqlCompiler._convert_quoted_columns(column_alias)
         if hasattr(column, "name"):
-            return KustoKqlCompiler._convert_quoted_columns(str(column.name)), None
-        return KustoKqlCompiler._convert_quoted_columns(str(column)), None
+            column_name = str(column.name)
+            # Special handling for COUNT(*) as a column name
+            if column_name.upper() == "COUNT(*)":
+                return column_name, None
+            return KustoKqlCompiler._convert_quoted_columns(column_name), None
+
+        column_str = str(column)
+        # Special handling for COUNT(*) as a column name
+        if column_str.upper() == "COUNT(*)":
+            return column_str, None
+        return KustoKqlCompiler._convert_quoted_columns(column_str), None
 
     @staticmethod
     def _build_column_projection(
