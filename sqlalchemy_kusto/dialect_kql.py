@@ -192,6 +192,71 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def visit_join(self, join, asfrom=True, from_linter=None, **kwargs):
         return ""
 
+    def _should_use_summarize_for_count_star(self, column, select):
+        """Determine if COUNT(*) should use summarize or extend."""
+        # Check if this is a literal_column (used in aggregations) or a regular column (used in drill-by)
+        return (
+            # Case for test_select_count: literal_column("count(*)")
+            (
+                hasattr(column, "element")
+                and isinstance(column.element, sql.expression.ClauseElement)
+                and not isinstance(column.element, sql.expression.ColumnClause)
+            )
+            # Also use summarize if there are where clauses (as in test_select_count)
+            or (select._whereclause is not None)
+        )
+
+    @staticmethod
+    def _is_count_star_column(column_name: str) -> bool:
+        """Check if the column name is COUNT(*)."""
+        return (
+            column_name.upper() == "COUNT(*)"
+            or column_name == "COUNT(*)"
+            or column_name.upper() == '"COUNT(*)"'
+            or column_name == '"COUNT(*)"'
+        )
+
+    def _process_column(
+        self, column, select, summarize_columns, extend_columns, projection_columns
+    ):
+        """Process a single column and update the appropriate collections."""
+        column_name, column_alias = self._extract_column_name_and_alias(column)
+        column_alias = self._escape_and_quote_columns(column_alias, True)
+        has_aggregates = False
+
+        # Special handling for COUNT(*) as a column name
+        if self._is_count_star_column(column_name):
+            if self._should_use_summarize_for_count_star(column, select):
+                # This is likely a literal_column or has where clauses, so use summarize
+                has_aggregates = True
+                summarize_columns.add(f"{column_alias} = count()")
+            else:
+                # This is likely a regular column without where clauses, so use extend
+                extend_columns.add(f"{column_alias} = count()")
+        else:
+            # Do we have aggregate columns?
+            kql_agg = self._extract_maybe_agg_column_parts(column_name)
+            if kql_agg:
+                has_aggregates = True
+                summarize_columns.add(
+                    self._build_column_projection(kql_agg, column_alias)
+                )
+            # No aggregates - do the columns have aliases?
+            elif column_alias and column_alias != column_name:
+                extend_columns.add(
+                    self._build_column_projection(column_name, column_alias, True)
+                )
+
+        # Add to projection columns
+        if column_alias:
+            projection_columns.append(
+                self._escape_and_quote_columns(column_alias, True)
+            )
+        else:
+            projection_columns.append(self._escape_and_quote_columns(column_name))
+
+        return has_aggregates
+
     def _get_projection_or_summarize(self, select: selectable.Select) -> dict[str, str]:
         """Builds the ending part of the query either project or summarize."""
         columns = select.inner_columns
@@ -200,99 +265,51 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         summarize_statement = ""
         extend_statement = ""
         project_statement = ""
-        has_aggregates = False
-        # The following is the logic
-        # With Columns :
-        #     - Do we have a group by clause ? --Yes---> Do we have aggregate columns ? --Yes--> Summarize new column(s)
-        #                |                                   |                                        with by clause
-        #                N                                   N --> Add to projection
-        #                |
-        #                |
-        #     - Do the columns have aliases ? --Yes---> Extend with aliases
-        #                |
-        #                N---> Add to projection
+
+        # Process columns if they exist
         if columns is not None:
             summarize_columns = set()
             extend_columns = set()
             projection_columns = []
-            for column in [c for c in columns if c.name != "*"]:
-                column_name, column_alias = self._extract_column_name_and_alias(column)
-                column_alias = self._escape_and_quote_columns(column_alias, True)
+            has_aggregates = False
 
-                # Special handling for COUNT(*) as a column name
-                if (
-                    column_name.upper() == "COUNT(*)"
-                    or column_name == "COUNT(*)"
-                    or column_name.upper() == '"COUNT(*)"'
-                    or column_name == '"COUNT(*)"'
-                ):
-                    # Check if this is a literal_column (used in aggregations) or a regular column (used in drill-by)
-                    # For test_select_count, we need to use summarize
-                    if (
-                        # Case for test_select_count: literal_column("count(*)")
-                        (
-                            hasattr(column, "element")
-                            and isinstance(column.element, sql.expression.ClauseElement)
-                            and not isinstance(
-                                column.element, sql.expression.ColumnClause
-                            )
-                        )
-                        # Also use summarize if there are where clauses (as in test_select_count)
-                        or (select._whereclause is not None)
-                    ):
-                        # This is likely a literal_column or has where clauses, so use summarize
-                        has_aggregates = True
-                        summarize_columns.add(f"{column_alias} = count()")
-                    else:
-                        # This is likely a regular column without where clauses, so use extend
-                        extend_columns.add(f"{column_alias} = count()")
-                else:
-                    # Do we have a group by clause ?
-                    # Do we have aggregate columns ?
-                    kql_agg = self._extract_maybe_agg_column_parts(column_name)
-                    if kql_agg:
-                        has_aggregates = True
-                        summarize_columns.add(
-                            self._build_column_projection(kql_agg, column_alias)
-                        )
-                    # No group by clause
-                    # Do the columns have aliases ?
-                    # Add additional and to handle case where : SELECT column_name as column_name
-                    elif column_alias and column_alias != column_name:
-                        extend_columns.add(
-                            self._build_column_projection(
-                                column_name, column_alias, True
-                            )
-                        )
-                if column_alias:
-                    projection_columns.append(
-                        self._escape_and_quote_columns(column_alias, True)
-                    )
-                else:
-                    projection_columns.append(
-                        self._escape_and_quote_columns(column_name)
-                    )
-            # group by columns
+            # Process each column (except *)
+            for column in [c for c in columns if c.name != "*"]:
+                column_has_agg = self._process_column(
+                    column,
+                    select,
+                    summarize_columns,
+                    extend_columns,
+                    projection_columns,
+                )
+                has_aggregates = has_aggregates or column_has_agg
+
+            # Process group by columns
             by_columns = self._group_by(group_by_cols)
-            if has_aggregates or bool(
-                by_columns
-            ):  # Summarize can happen with or without aggregate being created
+
+            # Build statements
+            if has_aggregates or bool(by_columns):
                 summarize_statement = f"| summarize {', '.join(summarize_columns)} "
                 if by_columns:
                     summarize_statement = (
                         f"{summarize_statement} by {', '.join(by_columns)}"
                     )
+
             if extend_columns:
                 extend_statement = f"| extend {', '.join(sorted(extend_columns))}"
+
             project_statement = (
                 f"| project {', '.join(projection_columns)}"
                 if projection_columns
                 else ""
             )
+
+        # Process order by
         unwrapped_order_by = self._get_order_by(order_by_cols)
         sort_statement = (
             f"| order by {', '.join(unwrapped_order_by)}" if unwrapped_order_by else ""
         )
+
         return {
             "extend": extend_statement,
             "summarize": summarize_statement,
@@ -386,12 +403,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         result = None
 
         # Special handling for COUNT(*) as a column name
-        if (
-            name.upper() == "COUNT(*)"
-            or name == "COUNT(*)"
-            or name.upper() == '"COUNT(*)"'
-            or name == '"COUNT(*)"'
-        ):
+        if KustoKqlCompiler._is_count_star_column(name):
             if is_alias:
                 # When it's an alias, we need to quote it
                 result = '["COUNT(*)"]'
@@ -622,12 +634,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             column_alias = str(column.name)
 
             # Special handling for COUNT(*) as a column name
-            if (
-                column_name.upper() == "COUNT(*)"
-                or column_name == "COUNT(*)"
-                or column_name.upper() == '"COUNT(*)"'
-                or column_name == '"COUNT(*)"'
-            ):
+            if KustoKqlCompiler._is_count_star_column(column_name):
                 return "COUNT(*)", column_alias
 
             return KustoKqlCompiler._convert_quoted_columns(
@@ -637,12 +644,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             column_name = str(column.name)
 
             # Special handling for COUNT(*) as a column name
-            if (
-                column_name.upper() == "COUNT(*)"
-                or column_name == "COUNT(*)"
-                or column_name.upper() == '"COUNT(*)"'
-                or column_name == '"COUNT(*)"'
-            ):
+            if KustoKqlCompiler._is_count_star_column(column_name):
                 return "COUNT(*)", None
 
             return KustoKqlCompiler._convert_quoted_columns(column_name), None
@@ -650,12 +652,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         column_str = str(column)
 
         # Special handling for COUNT(*) as a column name
-        if (
-            column_str.upper() == "COUNT(*)"
-            or column_str == "COUNT(*)"
-            or column_str.upper() == '"COUNT(*)"'
-            or column_str == '"COUNT(*)"'
-        ):
+        if KustoKqlCompiler._is_count_star_column(column_str):
             return "COUNT(*)", None
 
         return KustoKqlCompiler._convert_quoted_columns(column_str), None
