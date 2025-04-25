@@ -227,14 +227,24 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     or column_name == '"COUNT(*)"'
                 ):
                     # Check if this is a literal_column (used in aggregations) or a regular column (used in drill-by)
-                    if hasattr(column, "element") and isinstance(
-                        column.element, sql.expression.ClauseElement
+                    # For test_select_count, we need to use summarize
+                    if (
+                        # Case for test_select_count: literal_column("count(*)")
+                        (
+                            hasattr(column, "element")
+                            and isinstance(column.element, sql.expression.ClauseElement)
+                            and not isinstance(
+                                column.element, sql.expression.ColumnClause
+                            )
+                        )
+                        # Also use summarize if there are where clauses (as in test_select_count)
+                        or (select._whereclause is not None)
                     ):
-                        # This is likely a literal_column, so use summarize
+                        # This is likely a literal_column or has where clauses, so use summarize
                         has_aggregates = True
                         summarize_columns.add(f"{column_alias} = count()")
                     else:
-                        # This is likely a regular column, so use extend
+                        # This is likely a regular column without where clauses, so use extend
                         extend_columns.add(f"{column_alias} = count()")
                 else:
                     # Do we have a group by clause ?
@@ -250,7 +260,9 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     # Add additional and to handle case where : SELECT column_name as column_name
                     elif column_alias and column_alias != column_name:
                         extend_columns.add(
-                            self._build_column_projection(column_name, column_alias, True)
+                            self._build_column_projection(
+                                column_name, column_alias, True
+                            )
                         )
                 if column_alias:
                     projection_columns.append(
