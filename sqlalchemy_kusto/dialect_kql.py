@@ -379,9 +379,13 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         # If the alias starts with the keys in aggregates_sql_to_kql replace it with the values
         if is_alias:
             for key, value in aggregates_sql_to_kql.items():
-                logger.debug("Aliases and Names in escaping: %s and "
-                            "Key is %s and Value is %s",
-                            name, key, value)
+                logger.debug(
+                    "Aliases and Names in escaping: %s and "
+                    "Key is %s and Value is %s",
+                    name,
+                    key,
+                    value,
+                )
                 if key.startswith(name.lower()):
                     name = value
                     break
