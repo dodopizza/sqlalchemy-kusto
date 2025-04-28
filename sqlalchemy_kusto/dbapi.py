@@ -44,6 +44,8 @@ def connect(
     azure_ad_client_id: str | None = None,
     azure_ad_client_secret: str | None = None,
     azure_ad_tenant_id: str | None = None,
+    app_name: str | None = None,
+    app_version: str | None = None,
 ):  # pylint: disable=too-many-positional-arguments
     """Return a connection to the database."""
     return Connection(
@@ -55,6 +57,8 @@ def connect(
         azure_ad_client_id,
         azure_ad_client_secret,
         azure_ad_tenant_id,
+        app_name,
+        app_version,
     )
 
 
@@ -71,6 +75,8 @@ class Connection:
         azure_ad_client_id: str | None = None,
         azure_ad_client_secret: str | None = None,
         azure_ad_tenant_id: str | None = None,
+        app_name: str | None = None,
+        app_version: str | None = None,
     ):
         self.closed = False
         self.cursors: list[Cursor] = []
@@ -103,7 +109,12 @@ class Connection:
         else:
             # neither SP or MSI
             kcsb = KustoConnectionStringBuilder.with_az_cli_authentication(cluster)
-        kcsb._set_connector_details("sqlalchemy-kusto", "1.1.0")
+        kcsb._set_connector_details(
+            "sqlalchemy-kusto",
+            "3.1.0",
+            app_name,
+            app_version,
+        )
         self.kusto_client = KustoClient(kcsb)
         self.database = database
         self.properties = ClientRequestProperties()
@@ -111,8 +122,10 @@ class Connection:
     @check_closed
     def close(self):
         """Close the connection now. Kusto does not require to close the connection."""
+        self.closed = True
         for cursor in self.cursors:
-            cursor.close()
+            if not cursor.closed:
+                cursor.close()
 
     @check_closed
     def commit(self):
@@ -180,6 +193,7 @@ class Cursor:
     @check_closed
     def close(self):
         """Closes the cursor."""
+        self.closed = True
 
     @check_closed
     def execute(self, operation, parameters=None) -> "Cursor":
