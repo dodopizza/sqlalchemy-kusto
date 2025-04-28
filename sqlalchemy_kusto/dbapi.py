@@ -195,7 +195,6 @@ class Cursor:
         """Closes the cursor."""
         self.closed = True
 
-
     @check_closed
     def execute(self, operation, parameters=None) -> "Cursor":
         """Executes query. Supports only SELECT statements."""

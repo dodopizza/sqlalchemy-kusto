@@ -9,7 +9,7 @@ from sqlalchemy_kusto.dialect_base import KustoBaseDialect
 
 logger = logging.getLogger(__name__)
 
-122 = {
+aggregates_sql_to_kql = {
     "count(*)": "count()",
     "count(1)": "count()",
     "count": "count",
