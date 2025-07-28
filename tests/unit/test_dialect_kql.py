@@ -113,6 +113,7 @@ def test_select_from_text():
         pytest.param(text('Field1 ILIKE "%123"'), 'Field1 endswith "123"'),
         pytest.param(text("Field1 NOT ILIKE '%123'"), """Field1 !endswith '123'"""),
         pytest.param(text('Field1 NOT ILIKE "%123"'), 'Field1 !endswith "123"'),
+        pytest.param(text("Field1 != '1'"), """Field1 != '1'"""),
         pytest.param(
             Column("Field2", Integer).ilike("abc%"),
             """tolower(["Field2"]) startswith_cs tolower('abc')""",
