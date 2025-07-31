@@ -521,6 +521,13 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             where_clause,
             flags=re.IGNORECASE,
         )
+
+        where_clause = re.sub(
+            r"!=\s*=",
+            "!=",
+            where_clause,
+            flags=re.IGNORECASE,
+        )
         # Handle logical operators 'AND' and 'OR' to ensure the conditions are preserved
         # Replace AND with 'and' in KQL
         where_clause = re.sub(r"\s+AND\s+", r" and ", where_clause, flags=re.IGNORECASE)
