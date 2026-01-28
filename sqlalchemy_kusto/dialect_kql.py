@@ -68,6 +68,26 @@ kql_aggregates = {
 AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\[?\"?\'?\w+\"?\]?)\s*(,.+)*\)?\s*\)"
 
 
+def _find_top_level_operator(text: str, operator: str) -> int:
+    """Find position of operator at depth 0 (not inside quotes, brackets, or parens). Returns -1 if not found."""
+    depth, in_quotes, in_brackets = 0, False, False
+    for i, ch in enumerate(text):
+        if ch == '"' and (i == 0 or text[i-1] != '\\'):
+            in_quotes = not in_quotes
+        elif not in_quotes:
+            if ch == '[':
+                in_brackets = True
+            elif ch == ']':
+                in_brackets = False
+            elif not in_brackets:
+                if ch == '(':
+                    depth += 1
+                elif ch == ')':
+                    depth -= 1
+                elif ch == operator and depth == 0:
+                    return i
+    return -1
+
 class UniversalSet:
     def __contains__(self, item):
         return True
@@ -142,9 +162,15 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 )
                 compiled_query_lines.append(f"| where {converted_where_clause}")
 
+        # Add summarize first if it exists
+        if "summarize" in projections_parts_dict:
+            compiled_query_lines.append(projections_parts_dict.pop("summarize"))
+        
+        # Then add extend after summarize
         if "extend" in projections_parts_dict:
             compiled_query_lines.append(projections_parts_dict.pop("extend"))
 
+        # Add remaining parts (project, sort)
         for statement_part in projections_parts_dict.values():
             if statement_part:
                 compiled_query_lines.append(statement_part)
@@ -192,6 +218,26 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     def visit_join(self, join, asfrom=True, from_linter=None, **kwargs):
         return ""
 
+    @staticmethod
+    def _count_outer_parens(text: str) -> tuple[int, str]:
+        """Count and strip outer parentheses from text. Returns (count, stripped_text)."""
+        text = text.strip()
+        count = 0
+        while len(text) >= 2 and text[0] == '(' and text[-1] == ')':
+            depth = 0
+            for ch in text[:-1]:  # Scan all but last char
+                depth += (ch == '(') - (ch == ')')
+                if depth == 0:
+                    return count, text  # First '(' closed before end
+            count += 1
+            text = text[1:-1].strip()
+        return count, text
+
+    @staticmethod
+    def _has_operators_outside_quotes(expr: str) -> bool:
+        """Check if expression has arithmetic operators outside of quoted strings and brackets."""
+        return any(_find_top_level_operator(expr, op) != -1 for op in '+-*/')
+    
     def _get_projection_or_summarize(self, select: selectable.Select) -> dict[str, str]:
         """Builds the ending part of the query either project or summarize."""
         columns = select.inner_columns
@@ -217,30 +263,35 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             projection_columns = []
             for column in [c for c in columns if c.name != "*"]:
                 column_name, column_alias = self._extract_column_name_and_alias(column)
+                column_name = re.sub(r'(?:[a-zA-Z0-9_]+|\["[^"]+"\])\.', '', column_name)  # Strip table prefixes
                 column_alias = self._escape_and_quote_columns(column_alias, True)
-                # Do we have a group by clause ?
-                # Do we have aggregate columns ?
                 kql_agg = self._extract_maybe_agg_column_parts(column_name)
-                if kql_agg:
+                is_calculated_measure = self._has_operators_outside_quotes(column_name)
+                if kql_agg and not is_calculated_measure:
                     has_aggregates = True
                     summarize_columns.add(
                         self._build_column_projection(kql_agg, column_alias)
                     )
-                # No group by clause
-                # Do the columns have aliases ?
-                # Add additional and to handle case where : SELECT column_name as column_name
-                elif column_alias and column_alias != column_name:
-                    extend_columns.add(
-                        self._build_column_projection(column_name, column_alias, True)
-                    )
-                if column_alias:
-                    projection_columns.append(
-                        self._escape_and_quote_columns(column_alias, True)
-                    )
-                else:
-                    projection_columns.append(
-                        self._escape_and_quote_columns(column_name)
-                    )
+                elif column_alias and column_alias != self._escape_and_quote_columns(column_name):
+                    # Column with alias - extract any inline aggregates to summarize, then add to extend
+                    expr = column_name
+                    for match in re.finditer(r'(count|sum|avg|max|min|dcount)\s*\(\s*(?:\[")?([a-zA-Z_][a-zA-Z0-9_\s]*)(?:"\])?\s*\)', expr, re.IGNORECASE):
+                        col = match[2].strip()
+                        ref = f'["{col}"]'
+                        if not any(f"{ref} =" in s for s in summarize_columns):
+                            summarize_columns.add(f"{ref} = {match[1].lower()}({self._escape_and_quote_columns(col)})")
+                            has_aggregates = True
+                        expr = expr.replace(match[0], ref, 1)       
+                    escaped = self._escape_and_quote_columns(expr)
+                    if is_calculated_measure:
+                        # Wrap column refs in parens for arithmetic precedence
+                        escaped = re.sub(
+                            r'(\["[^"]*"\])',
+                            lambda m: m.group(1) if (m.start() > 0 and escaped[m.start()-1] == '(') else f'({m.group(1)})',
+                            escaped
+                        )
+                    extend_columns.add(f"{column_alias} = {escaped}")
+                projection_columns.append(column_alias if column_alias else self._escape_and_quote_columns(column_name))
             # group by columns
             by_columns = self._group_by(group_by_cols)
             if has_aggregates or bool(
@@ -271,6 +322,12 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     @staticmethod
     def _extract_maybe_agg_column_parts(column_name) -> str | None:
+        # Check if it's a known KQL aggregate function
+        maybe_aggregation_function = column_name.lower().split("(")[0].strip()
+        if maybe_aggregation_function in kql_aggregates:
+            match = re.match(r'(\w+)\s*\(\s*([^)]*)\s*\)', column_name, re.IGNORECASE)
+            if match:
+                return KustoKqlCompiler._sql_to_kql_aggregate(match.group(1), match.group(2).strip() or None)
         match_agg_cols = re.match(AGGREGATE_PATTERN, column_name, re.IGNORECASE)
         if match_agg_cols and match_agg_cols.groups():
             # Check if the aggregate function is count_distinct. This is case from superset
@@ -285,10 +342,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 aggregate_func.lower(), agg_column_name, is_distinct, extra_params
             )
             return kql_agg
-
-        maybe_aggregation_function = column_name.lower().split("(")[0]
-        if maybe_aggregation_function in kql_aggregates:
-            return column_name
 
         return None
 
@@ -345,7 +398,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         # Apply transformation
         modified_expression = re.sub(pattern, replacer, kql_expression)
 
-        return modified_expression
+        # Convert remaining standalone "col" -> ["col"], skip already bracketed
+        return re.sub(r'(?<!\[)"([^"]+)"', r'["\1"]', modified_expression)
 
     @staticmethod
     def _escape_and_quote_columns(name: str | None, is_alias=False) -> str:
@@ -358,23 +412,21 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             return name
         if name.startswith('"') and name.endswith('"'):
             name = name[1:-1]
-        # First, check if the name is already wrapped in ["ColumnName"] (escaped format)
         if name.startswith('["') and name.endswith('"]'):
             return name  # Return as is if already properly escaped
-        # Remove surrounding spaces
-        # Handle mathematical operations (wrap only the column part before operators)
-        # Find the position of the first operator or space that separates the column name
+        # Handle arithmetic expressions by recursively processing operands
         if not is_alias:
+            outer_paren_count, inner = KustoKqlCompiler._count_outer_parens(name)
             for operator in ["/", "+", "-", "*"]:
-                if operator in name:
-                    # Split the name at the first operator and wrap the left part
-                    parts = name.split(operator, 1)
-                    # Remove quotes if they exist at the edges
-                    col_part = parts[0].strip()
-                    if col_part.startswith('"') and col_part.endswith('"'):
-                        col_part = col_part[1:-1].strip()
-                    col_part = col_part.replace('"', '\\"')
-                    return f'["{col_part}"] {operator} {parts[1].strip()}'  # Wrap the column part
+                pos = _find_top_level_operator(inner, operator)
+                if pos != -1:
+                    left = KustoKqlCompiler._escape_and_quote_columns(inner[:pos].strip())
+                    right = KustoKqlCompiler._escape_and_quote_columns(inner[pos+1:].strip())
+                    return '(' * outer_paren_count + left + ' ' + operator + ' ' + right + ')' * outer_paren_count
+            # No operators - recurse on inner content if we stripped parens
+            if outer_paren_count > 0:
+                inner_result = KustoKqlCompiler._escape_and_quote_columns(inner)
+                return '(' * outer_paren_count + inner_result + ')' * outer_paren_count
         # No operators found, just wrap the entire name
         name = name.replace('"', '\\"')
         return f'["{name}"]'
@@ -644,8 +696,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         return_value = None
         # The count function is a special case because it can be used with or without a column name
         # We can also use it in count(Distinct column_name) format. This has to be handled separately
-        if sql_agg and sql_agg in ("count", "COUNT"):
-            if "*" in sql_agg or column_name in ("*", "1"):
+        if sql_agg and sql_agg.lower() in ("count",):
+            if "*" in str(column_name) or column_name in ("*", "1"):
                 return_value = aggregates_sql_to_kql["count(*)"]
             elif is_distinct:
                 return_value = f"dcount({column_name_escaped})"
@@ -662,7 +714,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             return_value = f"{sql_to_kql_aggregate_function}({column_name_escaped})"
         elif aggregation_function in kql_aggregates:
             return_value = (
-                f"{aggregation_function}({column_name_escaped}{extra_params})"
+                f"{aggregation_function}({column_name_escaped}{extra_params if extra_params else ''})"
             )
         return return_value
 
