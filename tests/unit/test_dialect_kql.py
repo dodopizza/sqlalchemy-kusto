@@ -592,6 +592,18 @@ class TestCalculatedMeasures:
             Column("value", Integer),
         )
 
+    @pytest.fixture
+    def pt_search_table(self):
+        """Table matching the Superset PT_Search_scenario use case."""
+        metadata = MetaData()
+        return Table(
+            "PT_Search_scenario",
+            metadata,
+            Column("UserInfo_Ring", String),
+            Column("UserInfo_Region", String),
+            schema="bc3902d8132f43e3ae086a009979fa88",
+        )
+
     def test_multi_aggregate_expression(self, events_table):
         """Test that expressions with multiple aggregates generate correct KQL."""
         from sqlalchemy import func
@@ -654,3 +666,153 @@ class TestCalculatedMeasures:
         count, inner = KustoKqlCompiler._count_outer_parens('(a) + (b)')
         assert count == 0
         assert inner == '(a) + (b)'
+
+    def test_predefined_measures_lowercase(self, pt_search_table):
+        """Test that predefined measures (aggregates) compile to lowercase KQL functions."""
+        from sqlalchemy import func
+
+        userinfo_ring_count = func.COUNT(pt_search_table.c.UserInfo_Ring).label("UserInfo_Ring Count")
+        userinfo_region_count = func.COUNT(pt_search_table.c.UserInfo_Region).label("UserInfo_Region Count")
+
+        query = select(userinfo_ring_count, userinfo_region_count).select_from(pt_search_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        # Should use lowercase count function in KQL
+        assert 'count(["UserInfo_Ring"])' in compiled or 'count([' in compiled
+        # Should NOT have uppercase COUNT
+        assert 'COUNT(' not in compiled
+
+    def test_calculated_measure_simple_reference(self, pt_search_table):
+        """Test a calculated measure that's just a reference to another measure."""
+        measure_15 = literal_column('"UserInfo_Region Count"').label("Measure 15")
+
+        query = select(measure_15).select_from(pt_search_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        # Should convert quoted identifier to bracket notation
+        assert '["Measure 15"]' in compiled
+        assert '["UserInfo_Region Count"]' in compiled
+
+    def test_calculated_measure_single_paren(self, pt_search_table):
+        """Test a calculated measure with single parentheses wrapper."""
+        measure_16 = literal_column('("UserInfo_Ring Count")').label("Measure 16")
+
+        query = select(measure_16).select_from(pt_search_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        assert '["Measure 16"]' in compiled
+
+    def test_calculated_measure_double_paren(self, pt_search_table):
+        """Test a calculated measure with double parentheses wrapper."""
+        measure_3 = literal_column('(("Measure 1"))').label("Measure 3")
+
+        query = select(measure_3).select_from(pt_search_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        assert '["Measure 3"]' in compiled
+        # Should preserve double parens
+        assert '((' in compiled and '))' in compiled
+
+    def test_calculated_measure_multiply_by_constant(self, pt_search_table):
+        """Test a calculated measure that multiplies a reference by a constant."""
+        measure_9 = literal_column('"UserInfo_Ring Count" * 2').label("Measure 9")
+
+        query = select(measure_9).select_from(pt_search_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        assert '["Measure 9"]' in compiled
+        assert '* 2' in compiled
+
+    def test_calculated_measure_addition(self, pt_search_table):
+        """Test a calculated measure that adds two measure references."""
+        measure_14 = literal_column('"UserInfo_Region Count" + "UserInfo_Ring Count"').label("Measure 14")
+
+        query = select(measure_14).select_from(pt_search_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        assert '["Measure 14"]' in compiled
+        assert '+' in compiled
+        assert '["UserInfo_Region Count"]' in compiled
+        assert '["UserInfo_Ring Count"]' in compiled
+
+    def test_calculated_measure_parens_addition(self, pt_search_table):
+        """Test a calculated measure with parenthesized addition."""
+        measure_11 = literal_column('("Measure 1") + ("Measure 2")').label("Measure 11")
+
+        query = select(measure_11).select_from(pt_search_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        assert '["Measure 11"]' in compiled
+        assert '+' in compiled
+
+    def test_calculated_measure_complex_expression(self, pt_search_table):
+        """Test a complex calculated measure with nested parens and multiplication."""
+        measure_8 = literal_column('("UserInfo_Ring Count" + "UserInfo_Region Count") * 2').label("Measure 8")
+
+        query = select(measure_8).select_from(pt_search_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        assert '["Measure 8"]' in compiled
+        assert '* 2' in compiled
+        assert '+' in compiled
+
+    def test_calculated_measure_plus_constant(self, pt_search_table):
+        """Test a calculated measure that adds a constant."""
+        measure_20 = literal_column('"Measure 1" + 1').label("Measure 20")
+
+        query = select(measure_20).select_from(pt_search_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        assert '["Measure 20"]' in compiled
+        assert '+ 1' in compiled
+
+    def test_no_double_bracketing(self, pt_search_table):
+        """Test that there's no double bracketing like [["col"]]."""
+        measure = literal_column('"UserInfo_Ring Count"').label("Test Measure")
+
+        query = select(measure).select_from(pt_search_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        # Should not have double brackets
+        assert '[["' not in compiled
+        assert '"]]' not in compiled
+
+    def test_standalone_quoted_identifier(self):
+        """Test that standalone quoted identifiers are converted to bracket notation."""
+        metadata = MetaData()
+        test_table = Table(
+            "TestTable",
+            metadata,
+            Column("Revenue", String),
+            Column("Cost", String),
+            schema="test_schema",
+        )
+
+        measure_standalone = literal_column('"Revenue"').label("Standalone Quote")
+
+        query = select(measure_standalone).select_from(test_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        assert '["Standalone Quote"]' in compiled
+        assert '["Revenue"]' in compiled
+
+    def test_standalone_quoted_expression(self):
+        """Test standalone expression with quoted identifiers."""
+        metadata = MetaData()
+        test_table = Table(
+            "TestTable",
+            metadata,
+            Column("Revenue", String),
+            Column("Cost", String),
+            schema="test_schema",
+        )
+
+        measure_expr = literal_column('"Revenue" + "Cost"').label("Standalone Expression")
+
+        query = select(measure_expr).select_from(test_table)
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        assert '["Standalone Expression"]' in compiled
+        assert '["Revenue"]' in compiled
+        assert '["Cost"]' in compiled
+        assert '+' in compiled
