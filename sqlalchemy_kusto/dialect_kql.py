@@ -296,16 +296,12 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     escaped = self._escape_and_quote_columns(expr)
                     if is_calculated_measure:
                         # Wrap column refs in parens for arithmetic precedence
-                        escaped_copy = escaped  # Capture for lambda
-                        escaped = re.sub(
-                            r'(\["[^"]*"\])',
-                            lambda m, e=escaped_copy: (
-                                m.group(1)
-                                if (m.start() > 0 and e[m.start() - 1] == "(")
-                                else f"({m.group(1)})"
-                            ),
-                            escaped,
-                        )
+                        def wrap_col_ref(m: re.Match[str], text: str = escaped) -> str:
+                            if m.start() > 0 and text[m.start() - 1] == "(":
+                                return m.group(1)
+                            return f"({m.group(1)})"
+
+                        escaped = re.sub(r'(\["[^"]*"\])', wrap_col_ref, escaped)
                     extend_columns.add(f"{column_alias} = {escaped}")
                 projection_columns.append(
                     column_alias
