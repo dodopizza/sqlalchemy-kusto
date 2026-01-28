@@ -9,6 +9,7 @@ from sqlalchemy import (
     column,
     create_engine,
     distinct,
+    func,
     literal_column,
     select,
     text,
@@ -233,11 +234,9 @@ def test_group_by_text_vaccine_dataset():
 
 
 def test_is_kql_function():
-    assert KustoKqlCompiler._is_kql_function(
-        """case(Size <= 3, "Small",
+    assert KustoKqlCompiler._is_kql_function("""case(Size <= 3, "Small",
                        Size <= 10, "Medium",
-                       "Large")"""
-    )
+                       "Large")""")
     assert KustoKqlCompiler._is_kql_function("""bin(time(16d), 7d)""")
     assert KustoKqlCompiler._is_kql_function(
         """iff((EventType in ("Heavy Rain", "Flash Flood", "Flood")), "Rain event", "Not rain event")"""
@@ -606,10 +605,10 @@ class TestCalculatedMeasures:
 
     def test_multi_aggregate_expression(self, events_table):
         """Test that expressions with multiple aggregates generate correct KQL."""
-        from sqlalchemy import func
-
         query = select(
-            (func.count(events_table.c.region) + func.count(events_table.c.ring)).label("multi_agg")
+            (func.count(events_table.c.region) + func.count(events_table.c.ring)).label(
+                "multi_agg"
+            )
         ).select_from(events_table)
 
         compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
@@ -635,52 +634,56 @@ class TestCalculatedMeasures:
 
     def test_escape_and_quote_columns_with_arithmetic(self):
         """Test _escape_and_quote_columns handles arithmetic expressions."""
-        result = KustoKqlCompiler._escape_and_quote_columns('col1 + col2')
+        result = KustoKqlCompiler._escape_and_quote_columns("col1 + col2")
         assert '["col1"]' in result
         assert '["col2"]' in result
-        assert '+' in result
+        assert "+" in result
 
     def test_escape_and_quote_columns_with_parentheses(self):
         """Test _escape_and_quote_columns handles parenthesized expressions."""
-        result = KustoKqlCompiler._escape_and_quote_columns('(col1 + col2)')
-        assert result.startswith('(')
-        assert result.endswith(')')
+        result = KustoKqlCompiler._escape_and_quote_columns("(col1 + col2)")
+        assert result.startswith("(")
+        assert result.endswith(")")
         assert '["col1"]' in result
         assert '["col2"]' in result
 
     def test_has_operators_outside_quotes(self):
         """Test detection of arithmetic operators outside quoted strings."""
-        assert KustoKqlCompiler._has_operators_outside_quotes('a + b') is True
-        assert KustoKqlCompiler._has_operators_outside_quotes('a - b') is True
-        assert KustoKqlCompiler._has_operators_outside_quotes('a * b') is True
-        assert KustoKqlCompiler._has_operators_outside_quotes('a / b') is True
+        assert KustoKqlCompiler._has_operators_outside_quotes("a + b") is True
+        assert KustoKqlCompiler._has_operators_outside_quotes("a - b") is True
+        assert KustoKqlCompiler._has_operators_outside_quotes("a * b") is True
+        assert KustoKqlCompiler._has_operators_outside_quotes("a / b") is True
         assert KustoKqlCompiler._has_operators_outside_quotes('["col"]') is False
         assert KustoKqlCompiler._has_operators_outside_quotes('"a + b"') is False
 
     def test_count_outer_parens(self):
         """Test counting and stripping outer parentheses."""
-        count, inner = KustoKqlCompiler._count_outer_parens('((a + b))')
-        assert count == 2
-        assert inner == 'a + b'
+        count, inner = KustoKqlCompiler._count_outer_parens("((a + b))")
+        assert count == 2  # noqa: PLR2004
+        assert inner == "a + b"
 
-        count, inner = KustoKqlCompiler._count_outer_parens('(a) + (b)')
+        count, inner = KustoKqlCompiler._count_outer_parens("(a) + (b)")
         assert count == 0
-        assert inner == '(a) + (b)'
+        assert inner == "(a) + (b)"
 
     def test_predefined_measures_lowercase(self, pt_search_table):
         """Test that predefined measures (aggregates) compile to lowercase KQL functions."""
-        from sqlalchemy import func
+        userinfo_ring_count = func.COUNT(pt_search_table.c.UserInfo_Ring).label(
+            "UserInfo_Ring Count"
+        )
+        userinfo_region_count = func.COUNT(pt_search_table.c.UserInfo_Region).label(
+            "UserInfo_Region Count"
+        )
 
-        userinfo_ring_count = func.COUNT(pt_search_table.c.UserInfo_Ring).label("UserInfo_Ring Count")
-        userinfo_region_count = func.COUNT(pt_search_table.c.UserInfo_Region).label("UserInfo_Region Count")
-
-        query = select(userinfo_ring_count, userinfo_region_count).select_from(pt_search_table)
+        query = select(userinfo_ring_count, userinfo_region_count).select_from(
+            pt_search_table
+        )
         compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
 
         # Should use lowercase count function in KQL
-        assert 'count(["UserInfo_Ring"])' in compiled or 'count([' in compiled
+        assert 'count(["UserInfo_Ring"])' in compiled or "count([" in compiled
         # Should NOT have uppercase COUNT
-        assert 'COUNT(' not in compiled
+        assert "COUNT(" not in compiled
 
     def test_calculated_measure_simple_reference(self, pt_search_table):
         """Test a calculated measure that's just a reference to another measure."""
@@ -711,7 +714,8 @@ class TestCalculatedMeasures:
 
         assert '["Measure 3"]' in compiled
         # Should preserve double parens
-        assert '((' in compiled and '))' in compiled
+        assert "((" in compiled
+        assert "))" in compiled
 
     def test_calculated_measure_multiply_by_constant(self, pt_search_table):
         """Test a calculated measure that multiplies a reference by a constant."""
@@ -721,17 +725,19 @@ class TestCalculatedMeasures:
         compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
 
         assert '["Measure 9"]' in compiled
-        assert '* 2' in compiled
+        assert "* 2" in compiled
 
     def test_calculated_measure_addition(self, pt_search_table):
         """Test a calculated measure that adds two measure references."""
-        measure_14 = literal_column('"UserInfo_Region Count" + "UserInfo_Ring Count"').label("Measure 14")
+        measure_14 = literal_column(
+            '"UserInfo_Region Count" + "UserInfo_Ring Count"'
+        ).label("Measure 14")
 
         query = select(measure_14).select_from(pt_search_table)
         compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
 
         assert '["Measure 14"]' in compiled
-        assert '+' in compiled
+        assert "+" in compiled
         assert '["UserInfo_Region Count"]' in compiled
         assert '["UserInfo_Ring Count"]' in compiled
 
@@ -743,18 +749,20 @@ class TestCalculatedMeasures:
         compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
 
         assert '["Measure 11"]' in compiled
-        assert '+' in compiled
+        assert "+" in compiled
 
     def test_calculated_measure_complex_expression(self, pt_search_table):
         """Test a complex calculated measure with nested parens and multiplication."""
-        measure_8 = literal_column('("UserInfo_Ring Count" + "UserInfo_Region Count") * 2').label("Measure 8")
+        measure_8 = literal_column(
+            '("UserInfo_Ring Count" + "UserInfo_Region Count") * 2'
+        ).label("Measure 8")
 
         query = select(measure_8).select_from(pt_search_table)
         compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
 
         assert '["Measure 8"]' in compiled
-        assert '* 2' in compiled
-        assert '+' in compiled
+        assert "* 2" in compiled
+        assert "+" in compiled
 
     def test_calculated_measure_plus_constant(self, pt_search_table):
         """Test a calculated measure that adds a constant."""
@@ -764,7 +772,7 @@ class TestCalculatedMeasures:
         compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
 
         assert '["Measure 20"]' in compiled
-        assert '+ 1' in compiled
+        assert "+ 1" in compiled
 
     def test_no_double_bracketing(self, pt_search_table):
         """Test that there's no double bracketing like [["col"]]."""
@@ -807,7 +815,9 @@ class TestCalculatedMeasures:
             schema="test_schema",
         )
 
-        measure_expr = literal_column('"Revenue" + "Cost"').label("Standalone Expression")
+        measure_expr = literal_column('"Revenue" + "Cost"').label(
+            "Standalone Expression"
+        )
 
         query = select(measure_expr).select_from(test_table)
         compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
@@ -815,4 +825,4 @@ class TestCalculatedMeasures:
         assert '["Standalone Expression"]' in compiled
         assert '["Revenue"]' in compiled
         assert '["Cost"]' in compiled
-        assert '+' in compiled
+        assert "+" in compiled
