@@ -576,3 +576,81 @@ def test_schema_from_query(query_table_name: str, expected_table_name: str):
 
     query_expected = f"let inner_qry = ({expected_table_name});inner_qry| take 5"
     assert query_compiled == query_expected
+
+
+class TestCalculatedMeasures:
+    """Tests for calculated measures (arithmetic expressions with aggregates)."""
+
+    @pytest.fixture
+    def events_table(self):
+        metadata = MetaData()
+        return Table(
+            "events",
+            metadata,
+            Column("region", String),
+            Column("ring", String),
+            Column("value", Integer),
+        )
+
+    def test_multi_aggregate_expression(self, events_table):
+        """Test that expressions with multiple aggregates generate correct KQL."""
+        from sqlalchemy import func
+
+        query = select(
+            (func.count(events_table.c.region) + func.count(events_table.c.ring)).label("multi_agg")
+        ).select_from(events_table)
+
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        # Should have summarize with both aggregates
+        assert "summarize" in compiled
+        # Should have extend for the calculated measure
+        assert "extend" in compiled
+        # Should project the alias
+        assert '["multi_agg"]' in compiled
+
+    def test_arithmetic_expression_with_columns(self, events_table):
+        """Test arithmetic expressions with column references."""
+        query = select(
+            (events_table.c.value / literal_column("100")).label("percentage")
+        ).select_from(events_table)
+
+        compiled = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+
+        # Should handle division operator
+        assert "/" in compiled
+        assert '["percentage"]' in compiled
+
+    def test_escape_and_quote_columns_with_arithmetic(self):
+        """Test _escape_and_quote_columns handles arithmetic expressions."""
+        result = KustoKqlCompiler._escape_and_quote_columns('col1 + col2')
+        assert '["col1"]' in result
+        assert '["col2"]' in result
+        assert '+' in result
+
+    def test_escape_and_quote_columns_with_parentheses(self):
+        """Test _escape_and_quote_columns handles parenthesized expressions."""
+        result = KustoKqlCompiler._escape_and_quote_columns('(col1 + col2)')
+        assert result.startswith('(')
+        assert result.endswith(')')
+        assert '["col1"]' in result
+        assert '["col2"]' in result
+
+    def test_has_operators_outside_quotes(self):
+        """Test detection of arithmetic operators outside quoted strings."""
+        assert KustoKqlCompiler._has_operators_outside_quotes('a + b') is True
+        assert KustoKqlCompiler._has_operators_outside_quotes('a - b') is True
+        assert KustoKqlCompiler._has_operators_outside_quotes('a * b') is True
+        assert KustoKqlCompiler._has_operators_outside_quotes('a / b') is True
+        assert KustoKqlCompiler._has_operators_outside_quotes('["col"]') is False
+        assert KustoKqlCompiler._has_operators_outside_quotes('"a + b"') is False
+
+    def test_count_outer_parens(self):
+        """Test counting and stripping outer parentheses."""
+        count, inner = KustoKqlCompiler._count_outer_parens('((a + b))')
+        assert count == 2
+        assert inner == 'a + b'
+
+        count, inner = KustoKqlCompiler._count_outer_parens('(a) + (b)')
+        assert count == 0
+        assert inner == '(a) + (b)'
