@@ -176,9 +176,9 @@ def test_group_by_text():
     ).replace("\n", "")
     # raw query text from query
     query_expected = (
-        '["ActiveUsersLastMonth"]| extend ["ActiveUserMetric"] = ["ActiveUsers"], '
-        '["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
-        '| summarize   by ["EventInfo_Time"] / time(1d)'
+        '["ActiveUsersLastMonth"]| summarize   by ["EventInfo_Time"] / time(1d)'
+        '| extend ["ActiveUserMetric"] = ["ActiveUsers"], '
+        '["EventInfo_Time"] = (["EventInfo_Time"]) / time(1d)'
         '| project ["EventInfo_Time"], ["ActiveUserMetric"]'
         '| order by ["ActiveUserMetric"] desc'
     )
@@ -226,7 +226,6 @@ def test_group_by_text_vaccine_dataset():
     ).replace("\n", "")
     query_expected = (
         'database("superset").["CovidVaccineData"]| '
-        'extend ["country_name"] = ["country_name"]| '
         'summarize   by ["country_name"]| '
         'project ["country_name"]| order by ["country_name"] asc'
     )
@@ -327,8 +326,8 @@ def test_distinct_count_by_text():
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| summarize ["DistinctUsers"] = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
+        '| extend ["EventInfo_Time"] = (["EventInfo_Time"]) / time(1d)'
         '| project ["EventInfo_Time"], ["DistinctUsers"]'
         '| order by ["ActiveUserMetric"] desc'
     )
@@ -353,8 +352,8 @@ def test_distinct_count_alt_by_text():
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| summarize ["DistinctUsers"] = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
+        '| extend ["EventInfo_Time"] = (["EventInfo_Time"]) / time(1d)'
         '| project ["EventInfo_Time"], ["DistinctUsers"]'
         '| order by ["ActiveUserMetric"] desc'
     )

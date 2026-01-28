@@ -338,14 +338,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     @staticmethod
     def _extract_maybe_agg_column_parts(column_name) -> str | None:
-        # Check if it's a known KQL aggregate function
-        maybe_aggregation_function = column_name.lower().split("(")[0].strip()
-        if maybe_aggregation_function in kql_aggregates:
-            match = re.match(r"(\w+)\s*\(\s*([^)]*)\s*\)", column_name, re.IGNORECASE)
-            if match:
-                return KustoKqlCompiler._sql_to_kql_aggregate(
-                    match.group(1), match.group(2).strip() or None
-                )
+        # First try the AGGREGATE_PATTERN which properly handles DISTINCT
         match_agg_cols = re.match(AGGREGATE_PATTERN, column_name, re.IGNORECASE)
         if match_agg_cols and match_agg_cols.groups():
             # Check if the aggregate function is count_distinct. This is case from superset
@@ -360,6 +353,11 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 aggregate_func.lower(), agg_column_name, is_distinct, extra_params
             )
             return kql_agg
+
+        # Fallback: if it's a known KQL aggregate, return as-is (passthrough)
+        maybe_aggregation_function = column_name.lower().split("(")[0].strip()
+        if maybe_aggregation_function in kql_aggregates:
+            return column_name
 
         return None
 
