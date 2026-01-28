@@ -163,15 +163,11 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 )
                 compiled_query_lines.append(f"| where {converted_where_clause}")
 
-        # Add summarize first if it exists
-        if "summarize" in projections_parts_dict:
-            compiled_query_lines.append(projections_parts_dict.pop("summarize"))
-
-        # Then add extend after summarize
+        # Add extend first (for column aliases)
         if "extend" in projections_parts_dict:
             compiled_query_lines.append(projections_parts_dict.pop("extend"))
 
-        # Add remaining parts (project, sort)
+        # Add remaining parts (summarize, project, sort)
         for statement_part in projections_parts_dict.values():
             if statement_part:
                 compiled_query_lines.append(statement_part)
@@ -267,17 +263,17 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 column_name = re.sub(
                     r'(?:[a-zA-Z0-9_]+|\["[^"]+"\])\.', "", column_name
                 )  # Strip table prefixes
-                column_alias = self._escape_and_quote_columns(column_alias, True)
+                column_alias_escaped = self._escape_and_quote_columns(
+                    column_alias, True
+                )
                 kql_agg = self._extract_maybe_agg_column_parts(column_name)
                 is_calculated_measure = self._has_operators_outside_quotes(column_name)
                 if kql_agg and not is_calculated_measure:
                     has_aggregates = True
                     summarize_columns.add(
-                        self._build_column_projection(kql_agg, column_alias)
+                        self._build_column_projection(kql_agg, column_alias_escaped)
                     )
-                elif column_alias and column_alias != self._escape_and_quote_columns(
-                    column_name
-                ):
+                elif column_alias_escaped and column_alias_escaped != column_name:
                     # Column with alias - extract any inline aggregates to summarize, then add to extend
                     expr = column_name
                     for match in re.finditer(
@@ -294,18 +290,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                             has_aggregates = True
                         expr = expr.replace(match[0], ref, 1)
                     escaped = self._escape_and_quote_columns(expr)
-                    if is_calculated_measure:
-                        # Wrap column refs in parens for arithmetic precedence
-                        def wrap_col_ref(m: re.Match[str], text: str = escaped) -> str:
-                            if m.start() > 0 and text[m.start() - 1] == "(":
-                                return m.group(1)
-                            return f"({m.group(1)})"
-
-                        escaped = re.sub(r'(\["[^"]*"\])', wrap_col_ref, escaped)
-                    extend_columns.add(f"{column_alias} = {escaped}")
+                    extend_columns.add(f"{column_alias_escaped} = {escaped}")
                 projection_columns.append(
-                    column_alias
-                    if column_alias
+                    column_alias_escaped
+                    if column_alias_escaped
                     else self._escape_and_quote_columns(column_name)
                 )
             # group by columns
@@ -338,14 +326,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     @staticmethod
     def _extract_maybe_agg_column_parts(column_name) -> str | None:
-        # Check if it's a known KQL aggregate function
-        maybe_aggregation_function = column_name.lower().split("(")[0].strip()
-        if maybe_aggregation_function in kql_aggregates:
-            match = re.match(r"(\w+)\s*\(\s*([^)]*)\s*\)", column_name, re.IGNORECASE)
-            if match:
-                return KustoKqlCompiler._sql_to_kql_aggregate(
-                    match.group(1), match.group(2).strip() or None
-                )
         match_agg_cols = re.match(AGGREGATE_PATTERN, column_name, re.IGNORECASE)
         if match_agg_cols and match_agg_cols.groups():
             # Check if the aggregate function is count_distinct. This is case from superset
@@ -360,6 +340,11 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 aggregate_func.lower(), agg_column_name, is_distinct, extra_params
             )
             return kql_agg
+
+        # Fallback: if it's a known KQL aggregate, return as-is (passthrough)
+        maybe_aggregation_function = column_name.lower().split("(")[0].strip()
+        if maybe_aggregation_function in kql_aggregates:
+            return column_name
 
         return None
 
