@@ -338,11 +338,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     @staticmethod
     def _extract_maybe_agg_column_parts(column_name) -> str | None:
-        # First try the AGGREGATE_PATTERN which properly handles DISTINCT
+        # First check AGGREGATE_PATTERN which handles SQL-style aggregates (count, sum, etc.)
+        # including count(distinct X) syntax
         match_agg_cols = re.match(AGGREGATE_PATTERN, column_name, re.IGNORECASE)
         if match_agg_cols and match_agg_cols.groups():
-            # Check if the aggregate function is count_distinct. This is case from superset
-            # where we can use count(distinct or count_distinct)
             aggregate_func, distinct_keyword, agg_column_name, extra_params = (
                 match_agg_cols.groups()
             )
@@ -354,9 +353,23 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             )
             return kql_agg
 
-        # Fallback: if it's a known KQL aggregate, return as-is (passthrough)
+        # Check if it's a KQL-specific aggregate function not covered by AGGREGATE_PATTERN
         maybe_aggregation_function = column_name.lower().split("(")[0].strip()
         if maybe_aggregation_function in kql_aggregates:
+            # Multi-arg KQL aggregate (e.g., percentile(col, 99), dcountif(col, predicate))
+            # Match func(first_arg, rest...) pattern
+            match_multi = re.match(
+                r"(\w+)\s*\(\s*([^,]+?)\s*,\s*(.+)\s*\)$", column_name, re.IGNORECASE
+            )
+            if match_multi:
+                func_name = match_multi.group(1).lower()
+                first_arg = match_multi.group(2).strip()
+                rest_args = match_multi.group(3).strip()
+                # Escape first arg if it's a column name (not a number/literal)
+                if not KustoKqlCompiler._is_number_literal(first_arg):
+                    first_arg = KustoKqlCompiler._escape_and_quote_columns(first_arg)
+                return f"{func_name}({first_arg}, {rest_args})"
+            # Single-arg KQL aggregate (e.g., countif(predicate)) - return as-is
             return column_name
 
         return None

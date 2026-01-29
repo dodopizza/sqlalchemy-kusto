@@ -25,14 +25,10 @@ def test_compiler_with_projection():
     statement_str = "logs | take 10"
     stmt = TextAsFrom(sa.text(statement_str), []).alias("virtual_table")
     query = sa.select(
-        from_obj=stmt,
-        columns=[
-            column("Id").label("id"),
-            column("TypeId").label("tId"),
-            column("Type"),
-        ],
-    )
-    query = query.select_from(stmt)
+        column("Id").label("id"),
+        column("TypeId").label("tId"),
+        column("Type"),
+    ).select_from(stmt)
     query = query.limit(10)
 
     query_compiled = str(query.compile(engine)).replace("\n", "")
@@ -50,11 +46,7 @@ def test_compiler_with_projection():
 def test_compiler_with_star():
     statement_str = "logs | take 10"
     stmt = TextAsFrom(sa.text(statement_str), []).alias("virtual_table")
-    query = sa.select(
-        "*",
-        from_obj=stmt,
-    )
-    query = query.select_from(stmt)
+    query = sa.select("*").select_from(stmt)
     query = query.limit(10)
     query_compiled = str(query.compile(engine)).replace("\n", "")
     query_expected = (
@@ -67,9 +59,7 @@ def test_compiler_with_star():
 
 def test_select_from_text():
     query = (
-        select([column("Field1"), column("Field2")])
-        .select_from(text("logs"))
-        .limit(100)
+        select(column("Field1"), column("Field2")).select_from(text("logs")).limit(100)
     )
     query_compiled = str(
         query.compile(engine, compile_kwargs={"literal_binds": True})
@@ -149,7 +139,7 @@ def test_select_from_text():
 )
 def test_where_predicates(f, expected):
     query = (
-        select([column("Field1"), column("Field2")]).select_from(text("logs")).where(f)
+        select(column("Field1"), column("Field2")).select_from(text("logs")).where(f)
     ).limit(100)
     query_compiled = str(
         query.compile(engine, compile_kwargs={"literal_binds": True})
@@ -165,7 +155,7 @@ def test_group_by_text():
     event_col = literal_column('"EventInfo_Time" / time(1d)').label("EventInfo_Time")
     active_users_col = literal_column("ActiveUsers").label("ActiveUserMetric")
     query = (
-        select([event_col, active_users_col])
+        select(event_col, active_users_col)
         .select_from(text("ActiveUsersLastMonth"))
         .group_by(literal_column('"EventInfo_Time" / time(1d)'))
         .order_by(text("ActiveUserMetric DESC"))
@@ -196,7 +186,7 @@ def test_function_text(f: str, expected: str):
     # create a query from select_query_text creating clause
     event_col = literal_column(f).label("EventInfo_Time")
     active_users_col = literal_column("ActiveUsers").label("ActiveUserMetric")
-    query = select([event_col, active_users_col]).select_from(
+    query = select(event_col, active_users_col).select_from(
         text("ActiveUsersLastMonth")
     )
     query_compiled = str(
@@ -216,7 +206,7 @@ def test_group_by_text_vaccine_dataset():
     # SQL: SELECT country_name AS country_name FROM superset."CovidVaccineData" GROUP BY country_name
     # ORDER BY country_name ASC - this is a simple query to get distinct country names
     query = (
-        select([literal_column("country_name").label("country_name")])
+        select(literal_column("country_name").label("country_name"))
         .select_from(text('superset."CovidVaccineData"'))
         .group_by(literal_column("country_name"))
         .order_by(text("country_name ASC"))
@@ -245,9 +235,7 @@ def test_is_kql_function():
 def test_percentile_by_text():
     event_col = literal_column("percentile(quantity_ordered, 99)").label("Measure 1")
     query = select(
-        [
-            event_col,
-        ]
+        event_col,
     ).select_from(text("SalesData"))
     query_compiled = str(
         query.compile(engine, compile_kwargs={"literal_binds": True})
@@ -266,9 +254,7 @@ def test_dcountif_by_text():
         "dcountif(year, city == 'Paris' or city in ('Madrid'))"
     ).label("Measure 1")
     query = select(
-        [
-            event_col,
-        ]
+        event_col,
     ).select_from(text("SalesData"))
     query_compiled = str(
         query.compile(engine, compile_kwargs={"literal_binds": True})
@@ -287,9 +273,7 @@ def test_countif_by_text():
         "Measure 1"
     )
     query = select(
-        [
-            event_col,
-        ]
+        event_col,
     ).select_from(text("SalesData"))
     query_compiled = str(
         query.compile(engine, compile_kwargs={"literal_binds": True})
@@ -311,10 +295,8 @@ def test_distinct_count_by_text():
     active_users_col = literal_column("ActiveUsers")
     query = (
         select(
-            [
-                event_col,
-                sa.func.count(distinct(active_users_col)).label("DistinctUsers"),
-            ]
+            event_col,
+            sa.func.count(distinct(active_users_col)).label("DistinctUsers"),
         )
         .select_from(text("ActiveUsersLastMonth"))
         .group_by(literal_column('"EventInfo_Time" / time(1d)'))
@@ -341,7 +323,7 @@ def test_distinct_count_alt_by_text():
     event_col = literal_column("EventInfo_Time / time(1d)").label("EventInfo_Time")
     active_users_col = literal_column("COUNT_DISTINCT(ActiveUsers)")
     query = (
-        select([event_col, active_users_col.label("DistinctUsers")])
+        select(event_col, active_users_col.label("DistinctUsers"))
         .select_from(text("ActiveUsersLastMonth"))
         .group_by(literal_column("EventInfo_Time / time(1d)"))
         .order_by(text("ActiveUserMetric DESC"))
@@ -410,7 +392,7 @@ def test_select_count():
     kql_query = "logs"
     column_count = literal_column("count(*)").label("total-count")
     query = (
-        select([column_count])
+        select(column_count)
         .select_from(TextAsFrom(text(kql_query), ["*"]).alias("inner_qry"))
         .where(text("Field1 > 1"))
         .where(text("Field2 < 2"))
