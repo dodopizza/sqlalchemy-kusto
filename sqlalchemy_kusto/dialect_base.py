@@ -119,13 +119,14 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         schema: str | None = None,
         **kwargs,
     ) -> list[dict[str, Any]]:
+        safe_name = table_name.replace('"', '\\"')
         table_search_query = f"""
             .show tables
-            | where TableName == "{table_name}"
+            | where TableName == "{safe_name}"
         """
         function_search_query = f"""
             .show functions
-            | where Name == "{table_name}"
+            | where Name == "{safe_name}"
         """
         table_search_result = connection.execute(table_search_query)
 
@@ -133,7 +134,7 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         if table_search_result.rowcount == 0:
             function_search_result = connection.execute(function_search_query)
             if function_search_result.rowcount == 1:
-                function_schema = f".show function {table_name} schema as json"
+                function_schema = f".show function {safe_name} schema as json"
                 query_result = connection.execute(function_schema)
                 rows = list(query_result)
                 entity_schema = json.loads(rows[0].Schema)
@@ -144,7 +145,7 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         entity_type = (
             "table" if table_search_result.rowcount == 1 else "materialized-view"
         )
-        query = f".show {entity_type} {table_name} schema as json"
+        query = f".show {entity_type} {safe_name} schema as json"
         query_result = connection.execute(query)
         rows = list(query_result)
         entity_schema = json.loads(rows[0].Schema)

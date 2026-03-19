@@ -186,9 +186,7 @@ class Cursor:
     @check_closed
     def rowcount(self) -> int:
         """Counts the number of rows on a result."""
-        # Consumes the iterator
-        results = list(self._results)  # type: ignore # check_result decorator will ensure that value is not None
-        return len(results)
+        return len(self._results)  # type: ignore  # list.__len__ is O(1)
 
     @check_closed
     def close(self):
@@ -237,7 +235,7 @@ class Cursor:
         Fetches the next row of a query result set, returning a single sequence,
         or `None` when no more data is available.
         """
-        if self.rowcount > self.current_item_index:
+        if self.current_item_index < len(self._results):  # type: ignore  # O(1)
             item = self._results[self.current_item_index]  # type: ignore
             self.current_item_index += 1
             return item
@@ -302,7 +300,10 @@ class Cursor:
     @check_result
     @check_closed
     def __next__(self):
-        return next(self._results)  # type: ignore
+        item = self.fetchone()
+        if item is None:
+            raise StopIteration
+        return item
 
     next = __next__
 
