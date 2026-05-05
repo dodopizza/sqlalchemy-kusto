@@ -1,5 +1,4 @@
-import sqlalchemy as sa
-from sqlalchemy import Boolean, Column, Integer, MetaData, String, Table, create_engine, select
+from sqlalchemy import Boolean, Column, Integer, MetaData, Table, create_engine, select
 
 engine = create_engine("kustosql+https://localhost/testdb")
 
@@ -15,14 +14,18 @@ orders = Table(
 
 def test_boolean_false_renders_as_zero():
     """Kusto T-SQL does not support `false`/`true` literals; they must be 1/0."""
-    query = select(orders.c.TotalAmount).where(orders.c.IsCorporateOrder == False)  # noqa: E712
+    query = select(orders.c.TotalAmount).where(
+        orders.c.IsCorporateOrder == False  # noqa: E712
+    )
     sql = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
     assert "false" not in sql.lower()
     assert "0" in sql
 
 
 def test_boolean_true_renders_as_one():
-    query = select(orders.c.TotalAmount).where(orders.c.IsCorporateOrder == True)  # noqa: E712
+    query = select(orders.c.TotalAmount).where(
+        orders.c.IsCorporateOrder == True  # noqa: E712
+    )
     sql = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
     assert "true" not in sql.lower()
     assert "1" in sql

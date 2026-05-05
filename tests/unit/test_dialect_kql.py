@@ -233,11 +233,9 @@ def test_group_by_text_vaccine_dataset():
 
 
 def test_is_kql_function():
-    assert KustoKqlCompiler._is_kql_function(
-        """case(Size <= 3, "Small",
+    assert KustoKqlCompiler._is_kql_function("""case(Size <= 3, "Small",
                        Size <= 10, "Medium",
-                       "Large")"""
-    )
+                       "Large")""")
     assert KustoKqlCompiler._is_kql_function("""bin(time(16d), 7d)""")
     assert KustoKqlCompiler._is_kql_function(
         """iff((EventType in ("Heavy Rain", "Flash Flood", "Flood")), "Rain event", "Not rain event")"""
