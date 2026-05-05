@@ -173,11 +173,12 @@ def test_group_by_text():
     query_compiled = str(
         query.compile(engine, compile_kwargs={"literal_binds": True})
     ).replace("\n", "")
-    # raw query text from query
+    # raw query text from query - order matches column appearance
     query_expected = (
-        '["ActiveUsersLastMonth"]| extend ["ActiveUserMetric"] = ["ActiveUsers"], '
-        '["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
+        '["ActiveUsersLastMonth"]'
         '| summarize   by ["EventInfo_Time"] / time(1d)'
+        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d), '
+        '["ActiveUserMetric"] = ["ActiveUsers"]'
         '| project ["EventInfo_Time"], ["ActiveUserMetric"]'
         '| order by ["ActiveUserMetric"] desc'
     )
@@ -201,12 +202,13 @@ def test_function_text(f: str, expected: str):
     query_compiled = str(
         query.compile(engine, compile_kwargs={"literal_binds": True})
     ).replace("\n", "")
+    # Order matches column appearance in select
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| extend ["ActiveUserMetric"] = ["ActiveUsers"], '
-        '["EventInfo_Time"] = '
+        '| extend ["EventInfo_Time"] = '
         + expected
-        + '| project ["EventInfo_Time"], ["ActiveUserMetric"]'
+        + ', ["ActiveUserMetric"] = ["ActiveUsers"]'
+        '| project ["EventInfo_Time"], ["ActiveUserMetric"]'
     )
     assert query_compiled == query_expected
 
@@ -214,6 +216,7 @@ def test_function_text(f: str, expected: str):
 def test_group_by_text_vaccine_dataset():
     # SQL: SELECT country_name AS country_name FROM superset."CovidVaccineData" GROUP BY country_name
     # ORDER BY country_name ASC - this is a simple query to get distinct country names
+    # Note: When alias = column name, no extend is needed
     query = (
         select([literal_column("country_name").label("country_name")])
         .select_from(text('superset."CovidVaccineData"'))
@@ -224,10 +227,10 @@ def test_group_by_text_vaccine_dataset():
         query.compile(engine, compile_kwargs={"literal_binds": True})
     ).replace("\n", "")
     query_expected = (
-        'database("superset").["CovidVaccineData"]| '
-        'extend ["country_name"] = ["country_name"]| '
-        'summarize   by ["country_name"]| '
-        'project ["country_name"]| order by ["country_name"] asc'
+        'database("superset").["CovidVaccineData"]'
+        '| summarize   by ["country_name"]'
+        '| project ["country_name"]'
+        '| order by ["country_name"] asc'
     )
     assert query_compiled == query_expected
 
@@ -326,8 +329,8 @@ def test_distinct_count_by_text():
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| summarize ["DistinctUsers"] = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
+        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| project ["EventInfo_Time"], ["DistinctUsers"]'
         '| order by ["ActiveUserMetric"] desc'
     )
@@ -352,8 +355,8 @@ def test_distinct_count_alt_by_text():
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| summarize ["DistinctUsers"] = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
+        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| project ["EventInfo_Time"], ["DistinctUsers"]'
         '| order by ["ActiveUserMetric"] desc'
     )
@@ -426,7 +429,8 @@ def test_select_count():
         'let inner_qry = (["logs"]);'
         "inner_qry"
         "| where Field1 > 1 and Field2 < 2"
-        '| summarize ["total-count"] = count() '
+        '| summarize ["__total-count_1"] = count() '
+        '| extend ["total-count"] = ["__total-count_1"]'
         '| project ["total-count"]'
         '| order by ["total-count"] desc'
         "| take 5"
@@ -545,6 +549,427 @@ def test_match_aggregates(column_name: str, expected_aggregate: str):
         assert kql_agg == expected_aggregate
     else:
         assert kql_agg is None
+
+
+def test_escape_and_quote_columns_with_two_quoted_measures():
+    """Test that two quoted measure names with operator are properly escaped.
+
+    e.g. "Measure 1" + "Measure 2" --> ["Measure 1"] + ["Measure 2"]
+    """
+    result = KustoKqlCompiler._escape_and_quote_columns('"Measure 1" + "Measure 2"')
+    assert result == '["Measure 1"] + ["Measure 2"]'
+
+
+def test_escape_and_quote_columns_preserves_already_bracketed():
+    """Test that already-bracketed columns are not double-converted."""
+    result = KustoKqlCompiler._escape_and_quote_columns('["Measure 1"]')
+    assert result == '["Measure 1"]'
+
+
+def test_calculated_measure_with_two_adhoc_measures():
+    """Test calculated measure referencing two ad hoc measures.
+
+    Measure 3 = "Measure 1" + "Measure 2" should compile to (["Measure 1"]) + (["Measure 2"])
+    Parentheses are added for arithmetic precedence clarity.
+    """
+    measure_3 = literal_column('"Measure 1" + "Measure 2"').label("Measure 3")
+    query = select([measure_3]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| extend ["Measure 3"] = ["Measure 1"] + ["Measure 2"]'
+        '| project ["Measure 3"]'
+    )
+    assert query_compiled == query_expected
+
+
+def test_escape_and_quote_columns_measure_with_constant():
+    """Test that measure with operator and constant is properly escaped.
+
+    e.g. "Measure 1" * 2 --> ["Measure 1"] * 2
+    """
+    result = KustoKqlCompiler._escape_and_quote_columns('"Measure 1" * 2')
+    assert result == '["Measure 1"] * 2'
+
+
+def test_escape_and_quote_columns_measure_with_operator_in_name():
+    """Test that measure names containing operators are properly escaped.
+
+    e.g. "Measure 1-2" --> ["Measure 1-2"] (not split as ["Measure 1"] - ["2"])
+    """
+    result = KustoKqlCompiler._escape_and_quote_columns('"Measure 1-2"')
+    assert result == '["Measure 1-2"]'
+
+
+def test_is_number_literal():
+    """Test _is_number_literal correctly identifies numeric literals."""
+    # Should match: integers and decimals with digits on both sides of decimal
+    assert KustoKqlCompiler._is_number_literal("5") is True
+    assert KustoKqlCompiler._is_number_literal("123") is True
+    assert KustoKqlCompiler._is_number_literal("0") is True
+    assert KustoKqlCompiler._is_number_literal("0.5") is True
+    assert KustoKqlCompiler._is_number_literal("5.0") is True
+    assert KustoKqlCompiler._is_number_literal("123.456") is True
+
+    # Should NOT match: trailing decimal, leading decimal, scientific notation, negatives
+    assert KustoKqlCompiler._is_number_literal("5.") is False
+    assert KustoKqlCompiler._is_number_literal(".5") is False
+    assert KustoKqlCompiler._is_number_literal("-5") is False
+    assert KustoKqlCompiler._is_number_literal("-0.5") is False
+    assert KustoKqlCompiler._is_number_literal("1e10") is False
+    assert KustoKqlCompiler._is_number_literal("1.5e-3") is False
+
+    # Should NOT match: non-numeric strings
+    assert KustoKqlCompiler._is_number_literal("abc") is False
+    assert KustoKqlCompiler._is_number_literal("Measure 1") is False
+    assert KustoKqlCompiler._is_number_literal("") is False
+
+
+def test_calculated_measure_with_adhoc_measure_and_constant():
+    """Test calculated measure with an ad hoc measure and a constant.
+
+    Measure 1 = count(*), Measure 2 = "Measure 1" * 2
+    Measure 2 should compile to (["Measure 1"]) * 2 (parentheses for arithmetic precedence)
+    """
+    measure_1 = literal_column("count(*)").label("Measure 1")
+    measure_2 = literal_column('"Measure 1" * 2').label("Measure 2")
+    query = select([measure_1, measure_2]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| summarize ["__Measure 1_1"] = count() '
+        '| extend ["Measure 1"] = ["__Measure 1_1"], ["Measure 2"] = ["Measure 1"] * 2'
+        '| project ["Measure 1"], ["Measure 2"]'
+    )
+    assert query_compiled == query_expected
+
+
+def test_calculated_measure_with_two_adhoc_measures_and_aggregates():
+    """Test calculated measure referencing two ad hoc measures with aggregates.
+
+    Measure 1 = count(*), Measure 2 = count(*)
+    Measure 3 = "Measure 1" + "Measure 2" should compile to (["Measure 1"]) + (["Measure 2"])
+    """
+    measure_1 = literal_column("count(*)").label("Measure 1")
+    measure_2 = literal_column("count(*)").label("Measure 2")
+    measure_3 = literal_column('"Measure 1" + "Measure 2"').label("Measure 3")
+    query = select([measure_1, measure_2, measure_3]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| summarize ["__Measure 1_1"] = count() '
+        '| extend ["Measure 1"] = ["__Measure 1_1"], ["Measure 2"] = ["__Measure 1_1"], ["Measure 3"] = ["Measure 1"] + ["Measure 2"]'
+        '| project ["Measure 1"], ["Measure 2"], ["Measure 3"]'
+    )
+    assert query_compiled == query_expected
+
+
+def test_calculated_measure_with_inline_aggregates():
+    """Test calculated measure with inline aggregates creating intermediary measures.
+
+    Measure = count("a") + count("b") should create intermediary measures:
+    - __Measure_1 = count(["a"])
+    - __Measure_2 = count(["b"])
+    - Measure = ["__Measure_1"] + ["__Measure_2"]
+    """
+    measure = literal_column('count("a") + count("b")').label("Measure")
+    query = select([measure]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| summarize ["__Measure_1"] = count(["a"]), ["__Measure_2"] = count(["b"]) '
+        '| extend ["Measure"] = ["__Measure_1"] + ["__Measure_2"]'
+        '| project ["Measure"]'
+    )
+    assert query_compiled == query_expected
+
+
+def test_calculated_measure_with_mixed_aggregates_and_references():
+    """Test calculated measure mixing inline aggregate and predefined measure.
+
+    Predefined 1 = count(*), Calculated = "Predefined 1" + count("b")
+    Should create:
+    - Predefined 1 = count()
+    - __Calculated_1 = count(["b"])
+    - Calculated = ["Predefined 1"] + ["__Calculated_1"]
+    """
+    predefined_1 = literal_column("count(*)").label("Predefined 1")
+    calculated = literal_column('"Predefined 1" + count("b")').label("Calculated")
+    query = select([predefined_1, calculated]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| summarize ["__Predefined 1_1"] = count(), ["__Calculated_1"] = count(["b"]) '
+        '| extend ["Predefined 1"] = ["__Predefined 1_1"], ["Calculated"] = ["Predefined 1"] + ["__Calculated_1"]'
+        '| project ["Predefined 1"], ["Calculated"]'
+    )
+    assert query_compiled == query_expected
+
+
+# ============================================================================
+# Unit tests for helper functions
+# ============================================================================
+
+
+class TestIsInsideQuotesOrBrackets:
+    """Tests for _is_inside_quotes_or_brackets helper."""
+
+    def test_position_inside_double_quotes(self):
+        text = 'before "inside" after'
+        # Positions inside the quotes (i, n, s, i, d, e)
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 8) is True
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 13) is True
+
+    def test_position_outside_double_quotes(self):
+        text = 'before "inside" after'
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 0) is False
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 5) is False
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 16) is False
+
+    def test_position_inside_single_quotes(self):
+        text = "before 'inside' after"
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 8) is True
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 13) is True
+
+    def test_position_outside_single_quotes(self):
+        text = "before 'inside' after"
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 0) is False
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 16) is False
+
+    def test_position_inside_brackets(self):
+        text = 'before ["column"] after'
+        # Position inside the brackets
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 8) is True
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 15) is True
+
+    def test_position_outside_brackets(self):
+        text = 'before ["column"] after'
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 0) is False
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 18) is False
+
+    def test_nested_quotes_in_brackets(self):
+        text = '["col with \\"quotes\\""]'
+        # Position inside should be True
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 5) is True
+
+    def test_position_at_boundary(self):
+        text = '"text"'
+        assert (
+            KustoKqlCompiler._is_inside_quotes_or_brackets(text, 0) is False
+        )  # At opening quote
+        assert (
+            KustoKqlCompiler._is_inside_quotes_or_brackets(text, 1) is True
+        )  # After opening quote
+
+    def test_out_of_bounds_position(self):
+        text = "short"
+        assert KustoKqlCompiler._is_inside_quotes_or_brackets(text, 100) is False
+
+
+class TestFindMatchingParen:
+    """Tests for _find_matching_paren helper."""
+
+    def test_simple_parentheses(self):
+        text = "count(x)"
+        assert KustoKqlCompiler._find_matching_paren(text, 5) == 7
+
+    def test_nested_parentheses(self):
+        text = "sum(count(x))"
+        assert KustoKqlCompiler._find_matching_paren(text, 3) == 12  # Outer paren
+        assert KustoKqlCompiler._find_matching_paren(text, 9) == 11  # Inner paren
+
+    def test_parentheses_with_quotes(self):
+        # Parens inside quotes should be ignored
+        text = 'func("text(with)parens")'
+        assert KustoKqlCompiler._find_matching_paren(text, 4) == 23
+
+    def test_parentheses_with_brackets(self):
+        # Parens inside brackets should be ignored
+        text = 'func(["col(1)"])'
+        assert KustoKqlCompiler._find_matching_paren(text, 4) == 15
+
+    def test_no_opening_paren_at_position(self):
+        text = "no paren here"
+        assert KustoKqlCompiler._find_matching_paren(text, 0) == -1
+
+    def test_unmatched_parenthesis(self):
+        text = "func(x"
+        assert KustoKqlCompiler._find_matching_paren(text, 4) == -1
+
+    def test_empty_parentheses(self):
+        text = "func()"
+        assert KustoKqlCompiler._find_matching_paren(text, 4) == 5
+
+    def test_deeply_nested(self):
+        text = "a(b(c(d)))"
+        assert KustoKqlCompiler._find_matching_paren(text, 1) == 9
+        assert KustoKqlCompiler._find_matching_paren(text, 3) == 8
+        assert KustoKqlCompiler._find_matching_paren(text, 5) == 7
+
+
+class TestHasOperatorsOutsideQuotes:
+    """Tests for _has_operators_outside_quotes helper."""
+
+    def test_simple_addition(self):
+        assert KustoKqlCompiler._has_operators_outside_quotes("a + b") is True
+
+    def test_simple_subtraction(self):
+        assert KustoKqlCompiler._has_operators_outside_quotes("a - b") is True
+
+    def test_simple_multiplication(self):
+        assert KustoKqlCompiler._has_operators_outside_quotes("a * b") is True
+
+    def test_simple_division(self):
+        assert KustoKqlCompiler._has_operators_outside_quotes("a / b") is True
+
+    def test_no_operators(self):
+        assert KustoKqlCompiler._has_operators_outside_quotes("count(x)") is False
+
+    def test_operator_inside_quotes(self):
+        # Note: _find_operator_outside_quotes only tracks double quotes, not single
+        assert KustoKqlCompiler._has_operators_outside_quotes('"a + b"') is False
+
+    def test_operator_inside_brackets(self):
+        assert KustoKqlCompiler._has_operators_outside_quotes('["a+b"]') is False
+
+    def test_mixed_operators(self):
+        assert KustoKqlCompiler._has_operators_outside_quotes("a + b * c") is True
+
+    def test_aggregate_with_operators(self):
+        assert (
+            KustoKqlCompiler._has_operators_outside_quotes("count(a) + sum(b)") is True
+        )
+
+
+class TestExtractAndReplaceAggregates:
+    """Tests for _extract_and_replace_aggregates helper."""
+
+    def test_single_aggregate(self):
+        expr = 'count(["a"])'
+        result, new_aggs = KustoKqlCompiler._extract_and_replace_aggregates(
+            expr, "Measure"
+        )
+        assert result == '["__Measure_1"]'
+        assert len(new_aggs) == 1
+        assert new_aggs[0] == ('["__Measure_1"]', 'count(["a"])')
+
+    def test_two_aggregates_with_operator(self):
+        expr = 'count(["a"]) + sum(["b"])'
+        result, new_aggs = KustoKqlCompiler._extract_and_replace_aggregates(
+            expr, "Measure"
+        )
+        assert result == '["__Measure_1"] + ["__Measure_2"]'
+        assert len(new_aggs) == 2
+        assert new_aggs[0][1] == 'count(["a"])'
+        assert new_aggs[1][1] == 'sum(["b"])'
+
+    def test_no_aggregates(self):
+        expr = '["a"] + ["b"]'
+        result, new_aggs = KustoKqlCompiler._extract_and_replace_aggregates(
+            expr, "Measure"
+        )
+        assert result == '["a"] + ["b"]'
+        assert len(new_aggs) == 0
+
+    def test_reuses_existing_aggregate(self):
+        expr = 'count(["a"]) + count(["a"])'
+        result, new_aggs = KustoKqlCompiler._extract_and_replace_aggregates(
+            expr, "Measure"
+        )
+        # Both should use the same reference
+        assert result == '["__Measure_1"] + ["__Measure_1"]'
+        assert len(new_aggs) == 1  # Only one unique aggregate
+
+    def test_existing_aggs_parameter(self):
+        existing = {'count(["a"])': '["existing_ref"]'}
+        expr = 'count(["a"]) + sum(["b"])'
+        result, new_aggs = KustoKqlCompiler._extract_and_replace_aggregates(
+            expr, "Measure", existing
+        )
+        assert '["existing_ref"]' in result
+        assert len(new_aggs) == 1  # Only sum is new, count is reused
+
+    def test_aggregate_in_quotes_ignored(self):
+        expr = '"count(a)"'
+        result, new_aggs = KustoKqlCompiler._extract_and_replace_aggregates(
+            expr, "Measure"
+        )
+        assert result == '"count(a)"'
+        assert len(new_aggs) == 0
+
+    def test_aggregate_in_brackets_ignored(self):
+        expr = '["count(a)"]'
+        result, new_aggs = KustoKqlCompiler._extract_and_replace_aggregates(
+            expr, "Measure"
+        )
+        assert result == '["count(a)"]'
+        assert len(new_aggs) == 0
+
+    def test_measure_name_with_special_chars(self):
+        expr = 'count(["a"])'
+        result, new_aggs = KustoKqlCompiler._extract_and_replace_aggregates(
+            expr, '["My Measure"]'
+        )
+        assert result == '["__My Measure_1"]'
+
+    def test_complex_expression(self):
+        expr = 'count(["a"]) * 100 / sum(["b"])'
+        result, new_aggs = KustoKqlCompiler._extract_and_replace_aggregates(expr, "Pct")
+        assert '["__Pct_1"]' in result
+        assert '["__Pct_2"]' in result
+        assert "* 100 /" in result
+        assert len(new_aggs) == 2
+
+
+class TestContainsAggregateFunction:
+    """Tests for _contains_aggregate_function helper."""
+
+    def test_contains_count(self):
+        assert KustoKqlCompiler._contains_aggregate_function("count(x)") is True
+
+    def test_contains_sum(self):
+        assert KustoKqlCompiler._contains_aggregate_function("sum(x)") is True
+
+    def test_contains_avg(self):
+        assert KustoKqlCompiler._contains_aggregate_function("avg(x)") is True
+
+    def test_contains_min_max(self):
+        assert KustoKqlCompiler._contains_aggregate_function("min(x)") is True
+        assert KustoKqlCompiler._contains_aggregate_function("max(x)") is True
+
+    def test_contains_dcount(self):
+        assert KustoKqlCompiler._contains_aggregate_function("dcount(x)") is True
+
+    def test_no_aggregate(self):
+        assert KustoKqlCompiler._contains_aggregate_function("col + 1") is False
+        assert KustoKqlCompiler._contains_aggregate_function('["column"]') is False
+
+    def test_aggregate_in_quotes_not_counted(self):
+        assert KustoKqlCompiler._contains_aggregate_function('"count(x)"') is False
+        assert KustoKqlCompiler._contains_aggregate_function("'sum(x)'") is False
+
+    def test_aggregate_in_brackets_not_counted(self):
+        assert KustoKqlCompiler._contains_aggregate_function('["count(x)"]') is False
+
+    def test_aggregate_with_complex_arg(self):
+        assert (
+            KustoKqlCompiler._contains_aggregate_function('count(["My Col"])') is True
+        )
+
+    def test_multiple_aggregates(self):
+        assert (
+            KustoKqlCompiler._contains_aggregate_function("count(a) + sum(b)") is True
+        )
 
 
 @pytest.mark.parametrize(
