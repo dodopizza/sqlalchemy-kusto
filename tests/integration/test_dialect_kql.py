@@ -202,6 +202,94 @@ def test_date_bin_ops(test_label, group_fn, temp_table_name, expected, compare_d
         assert actual_result == expected_records
 
 
+def test_parentheses_preserved_in_expression(temp_table_name):
+    table = Table(
+        temp_table_name,
+        metadata,
+        Column("Text", String),
+    )
+    measure = literal_column('(("Text"))').label("Measure 1")
+    query = (
+        session.query(measure)
+        .select_from(table)
+        .order_by(literal_column('"Measure 1"'))
+    )
+    query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
+
+    assert "((" in query_compiled
+    assert "))" in query_compiled
+    assert '["Text"]' in query_compiled
+
+    with kql_engine.connect() as connection:
+        result = connection.execute(text(query_compiled))
+        values = [row[0] for row in result.fetchall()]
+        expected_count = 9
+        assert len(values) == expected_count
+        assert set(values) == {"value_0", "value_1"}
+
+
+def test_quoted_identifier_converted_to_kql(temp_table_name):
+    table = Table(
+        temp_table_name,
+        metadata,
+        Column("Text", String),
+    )
+    quoted_text = literal_column("Text").label("QuotedText")
+    query = session.query(quoted_text).select_from(table).order_by(text("QuotedText"))
+    query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
+
+    assert '["Text"]' in query_compiled
+
+    with kql_engine.connect() as connection:
+        result = connection.execute(text(query_compiled))
+        values = [row[0] for row in result.fetchall()]
+        expected_count = 9
+        assert len(values) == expected_count
+        assert set(values) == {"value_0", "value_1"}
+
+
+def test_uppercase_functions_lowercased(temp_table_name):
+    table = Table(
+        temp_table_name,
+        metadata,
+    )
+    query = session.query(func.COUNT(text("Id")).label("tag_count")).select_from(table)
+    query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
+
+    assert "count(" in query_compiled
+    assert "COUNT(" not in query_compiled
+
+    with kql_engine.connect() as connection:
+        result = connection.execute(text(query_compiled))
+        assert {row[0] for row in result.fetchall()} == {9}
+
+
+def test_extend_after_summarize_for_calculated_measures(temp_table_name):
+    table = Table(
+        temp_table_name,
+        metadata,
+    )
+    measure_1 = func.COUNT(text("Id")).label("Measure 1")
+    measure_2 = literal_column('"Measure 1" * 2').label("Measure 2")
+    query = session.query(measure_1, measure_2).select_from(table)
+    query_compiled = str(query.statement.compile(kql_engine)).replace("\n", "")
+
+    summarize_index = query_compiled.find("| summarize")
+    extend_index = query_compiled.find("| extend")
+    assert summarize_index != -1
+    assert extend_index != -1
+    assert summarize_index < extend_index
+
+    with kql_engine.connect() as connection:
+        result = connection.execute(text(query_compiled))
+        row = result.fetchone()
+        assert row is not None
+        expected_count = 9
+        expected_double_count = 18
+        assert int(row[0]) == expected_count
+        assert int(row[1]) == expected_double_count
+
+
 def get_kcsb():
     return (
         KustoConnectionStringBuilder.with_az_cli_authentication(KUSTO_URL)

@@ -66,6 +66,58 @@ kql_aggregates = {
     "variancep",
 }
 AGGREGATE_PATTERN = r"(\w+)\s*\(\s*(DISTINCT|distinct\s*)?\(?\s*(\*|\[?\"?\'?\w+\"?\]?)\s*(,.+)*\)?\s*\)"
+# Pre-compiled regex for aggregate function matching (performance optimization).
+# Compiled once at module load to avoid recompiling on every call, which significantly
+# improves performance for query-heavy workloads.
+KQL_AGG_PATTERN = re.compile(
+    r"\b(" + "|".join(kql_aggregates) + r")\s*\(", re.IGNORECASE
+)
+
+
+class _ParseState:
+    """Tracks parsing state while scanning through text."""
+
+    __slots__ = ("in_double_quote", "in_single_quote", "in_bracket", "paren_depth")
+
+    def __init__(self):
+        self.in_double_quote = False
+        self.in_single_quote = False
+        self.in_bracket = False
+        self.paren_depth = 0
+
+    def update(self, ch: str, prev_ch: str | None) -> None:
+        """Update state based on current and previous character."""
+        # Handle quotes (only if not escaped and not in conflicting context)
+        if (
+            ch == '"'
+            and prev_ch != "\\"
+            and not self.in_single_quote
+            and not self.in_bracket
+        ):
+            self.in_double_quote = not self.in_double_quote
+        elif (
+            ch == "'"
+            and prev_ch != "\\"
+            and not self.in_double_quote
+            and not self.in_bracket
+        ):
+            self.in_single_quote = not self.in_single_quote
+        # Handle brackets and parens (only if not in quotes)
+        elif not self.in_double_quote and not self.in_single_quote:
+            if ch == "[":
+                self.in_bracket = True
+            elif ch == "]":
+                self.in_bracket = False
+            elif not self.in_bracket:
+                if ch == "(":
+                    self.paren_depth += 1
+                elif ch == ")":
+                    self.paren_depth -= 1
+
+    @property
+    def in_quotes_or_brackets(self) -> bool:
+        """Check if currently inside quotes or brackets."""
+        return self.in_double_quote or self.in_single_quote or self.in_bracket
 
 
 class UniversalSet:
@@ -88,6 +140,149 @@ class KustoKqlCompiler(compiler.SQLCompiler):
     visit_empty_set_expr = None
     visit_sequence = None
     sort_with_clause_parts = 2
+
+    @staticmethod
+    def _find_top_level_operator(text: str, operator: str) -> int:
+        """Find position of operator at depth 0 (not inside quotes, brackets, or parens).
+
+        Args:
+            text: The string to search in
+            operator: The single-character operator to find (e.g., '+', '-', '*', '/')
+
+        Returns:
+            The position of the operator at depth 0, or -1 if not found.
+            Returns -1 when the operator only appears inside quotes, brackets, or nested parens.
+        """
+        state = _ParseState()
+        for i, ch in enumerate(text):
+            if (
+                ch == operator
+                and state.paren_depth == 0
+                and not state.in_quotes_or_brackets
+            ):
+                return i
+            state.update(ch, text[i - 1] if i > 0 else None)
+        return -1
+
+    @staticmethod
+    def _is_inside_quotes_or_brackets(text: str, pos: int) -> bool:
+        """Check if a position in text is inside quotes or brackets."""
+        if pos >= len(text):
+            return False
+
+        state = _ParseState()
+        for i in range(pos):
+            state.update(text[i], text[i - 1] if i > 0 else None)
+        return state.in_quotes_or_brackets
+
+    @staticmethod
+    def _find_matching_paren(text: str, start_pos: int) -> int:
+        """Find the matching closing parenthesis for an opening paren at start_pos."""
+        if start_pos >= len(text) or text[start_pos] != "(":
+            return -1
+
+        state = _ParseState()
+        state.paren_depth = 1  # Start with depth 1 since we're at opening paren
+
+        for i in range(start_pos + 1, len(text)):
+            ch = text[i]
+            state.update(ch, text[i - 1] if i > 0 else None)
+            if state.paren_depth == 0:
+                return i
+        return -1
+
+    @staticmethod
+    def _has_operators_outside_quotes(expr: str) -> bool:
+        """Check if expression has arithmetic operators outside of quoted strings and brackets."""
+        return any(
+            KustoKqlCompiler._find_top_level_operator(expr, op) != -1 for op in "+-*/"
+        )
+
+    @staticmethod
+    def _count_outer_parens(text: str) -> tuple[int, str]:
+        """Count and strip outer parentheses from text. Returns (count, stripped_text)."""
+        text = text.strip()
+        count = 0
+        while len(text) > 1 and text[0] == "(" and text[-1] == ")":
+            depth = 0
+            for ch in text[:-1]:  # Scan all but last char
+                depth += (ch == "(") - (ch == ")")
+                if depth == 0:
+                    return count, text  # First '(' closed before end
+            count += 1
+            text = text[1:-1].strip()
+        return count, text
+
+    @staticmethod
+    def _extract_and_replace_aggregates(
+        expr: str, measure_name: str, existing_aggs: dict[str, str] | None = None
+    ) -> tuple[str, list[tuple[str, str]]]:
+        """Extract aggregate functions from an expression and replace with references.
+
+        Args:
+            expr: The expression to process (may contain aggregates, operators)
+            measure_name: Name of the parent measure (used for generating ref names)
+            existing_aggs: Dict mapping kql_agg (lowercase) -> ref_name for reuse.
+
+        Returns:
+            A tuple of:
+            - modified expression with aggregates replaced by references like ["__measure_1"]
+            - list of (ref_name, kql_aggregate) tuples to add to summarize (only NEW ones)
+        """
+        if existing_aggs is None:
+            existing_aggs = {}
+
+        new_aggregates: list[tuple[str, str]] = []
+        agg_counter = 0
+
+        # Collect replacements: (start, end, ref_name)
+        replacements: list[tuple[int, int, str]] = []
+
+        for match in KQL_AGG_PATTERN.finditer(expr):
+            start = match.start()
+            paren_end = KustoKqlCompiler._find_matching_paren(expr, match.end() - 1)
+            kql_agg = (
+                KustoKqlCompiler._extract_maybe_agg_column_parts(
+                    expr[start : paren_end + 1]
+                )
+                if paren_end != -1
+                else None
+            )
+
+            # Skip invalid matches
+            if (
+                KustoKqlCompiler._is_inside_quotes_or_brackets(expr, start)
+                or paren_end == -1
+                or not kql_agg
+            ):
+                continue
+
+            # Reuse existing aggregate or create new one
+            if kql_agg.lower() in existing_aggs:
+                ref_name = existing_aggs[kql_agg.lower()]
+            else:
+                agg_counter += 1
+                clean_name = measure_name.strip('[]"')
+                ref_name = f'["__{clean_name}_{agg_counter}"]'
+                existing_aggs[kql_agg.lower()] = ref_name
+                new_aggregates.append((ref_name, kql_agg))
+
+            replacements.append((start, paren_end + 1, ref_name))
+
+        # Apply replacements from right to left so positions stay valid
+        result = expr
+        for start, end, ref_name in reversed(replacements):
+            result = result[:start] + ref_name + result[end:]
+
+        return result, new_aggregates
+
+    @staticmethod
+    def _contains_aggregate_function(expr: str) -> bool:
+        """Check if expression contains an aggregate function call."""
+        for match in KQL_AGG_PATTERN.finditer(expr):
+            if not KustoKqlCompiler._is_inside_quotes_or_brackets(expr, match.start()):
+                return True
+        return False
 
     def visit_select(
         self,
@@ -142,9 +337,15 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 )
                 compiled_query_lines.append(f"| where {converted_where_clause}")
 
+        # Add summarize first if it exists
+        if "summarize" in projections_parts_dict:
+            compiled_query_lines.append(projections_parts_dict.pop("summarize"))
+
+        # Then add extend after summarize
         if "extend" in projections_parts_dict:
             compiled_query_lines.append(projections_parts_dict.pop("extend"))
 
+        # Add remaining parts (project, sort)
         for statement_part in projections_parts_dict.values():
             if statement_part:
                 compiled_query_lines.append(statement_part)
@@ -212,31 +413,63 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         #                |
         #                N---> Add to projection
         if columns is not None:
-            summarize_columns = set()
-            extend_columns = set()
+            summarize_columns = []
+            extend_columns = []
             projection_columns = []
+            existing_aggs: dict[str, str] = {}
             for column in [c for c in columns if c.name != "*"]:
                 column_name, column_alias = self._extract_column_name_and_alias(column)
                 column_alias = self._escape_and_quote_columns(column_alias, True)
+                column_name = re.sub(
+                    r'(?:[a-zA-Z_][a-zA-Z0-9_]*|\["[^"]+"\])\.', "", column_name
+                )  # Remove table qualifiers from column name for processing
                 # Do we have a group by clause ?
                 # Do we have aggregate columns ?
                 kql_agg = self._extract_maybe_agg_column_parts(column_name)
-                if kql_agg:
+                has_inline_aggregates = self._contains_aggregate_function(column_name)
+
+                # Case 1: Simple aggregate (e.g., count(), sum(col))
+                if kql_agg and not self._has_operators_outside_quotes(column_name):
                     has_aggregates = True
-                    summarize_columns.add(
-                        self._build_column_projection(kql_agg, column_alias)
+                    summarize_entry = self._build_column_projection(
+                        kql_agg, column_alias
                     )
+                    summarize_columns.append(summarize_entry)
+                    projection_columns.append(column_alias)
+                    if column_alias:
+                        existing_aggs[kql_agg.lower()] = column_alias
+
+                # Case 2 & 3: Expressions with aggregates or aliased columns (both go to extend)
                 # No group by clause
                 # Do the columns have aliases ?
                 # Add additional and to handle case where : SELECT column_name as column_name
-                elif column_alias and column_alias != column_name:
-                    extend_columns.add(
-                        self._build_column_projection(column_name, column_alias, True)
-                    )
-                if column_alias:
-                    projection_columns.append(
-                        self._escape_and_quote_columns(column_alias, True)
-                    )
+                elif has_inline_aggregates or (
+                    column_alias
+                    and column_alias != self._escape_and_quote_columns(column_name)
+                ):
+                    # If contains aggregates, extract them first
+                    if has_inline_aggregates:
+                        has_aggregates = True
+                        column_name, extracted_aggs = (
+                            self._extract_and_replace_aggregates(
+                                column_name, column_alias or "expr", existing_aggs
+                            )
+                        )
+
+                        # Add extracted aggregates to summarize
+                        for ref_name, kql_agg_extracted in extracted_aggs:
+                            summarize_entry = self._build_column_projection(
+                                kql_agg_extracted, ref_name
+                            )
+                            summarize_columns.append(summarize_entry)
+
+                    # Build extend entry (common for both cases)
+                    escaped_expr = self._escape_and_quote_columns(column_name)
+                    extend_entry = f"{column_alias} = {escaped_expr}"
+                    extend_columns.append(extend_entry)
+                    projection_columns.append(column_alias)
+
+                # Case 4: Simple column reference
                 else:
                     projection_columns.append(
                         self._escape_and_quote_columns(column_name)
@@ -252,7 +485,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                         f"{summarize_statement} by {', '.join(by_columns)}"
                     )
             if extend_columns:
-                extend_statement = f"| extend {', '.join(sorted(extend_columns))}"
+                extend_statement = f"| extend {', '.join(extend_columns)}"
+
             project_statement = (
                 f"| project {', '.join(projection_columns)}"
                 if projection_columns
@@ -356,26 +590,36 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             or KustoKqlCompiler._is_number_literal(name)
         ) and not is_alias:
             return name
-        if name.startswith('"') and name.endswith('"'):
-            name = name[1:-1]
         # First, check if the name is already wrapped in ["ColumnName"] (escaped format)
         if name.startswith('["') and name.endswith('"]'):
             return name  # Return as is if already properly escaped
-        # Remove surrounding spaces
-        # Handle mathematical operations (wrap only the column part before operators)
-        # Find the position of the first operator or space that separates the column name
+        # Handle arithmetic expressions by recursively processing operands
         if not is_alias:
+            outer_paren_count, inner = KustoKqlCompiler._count_outer_parens(name)
             for operator in ["/", "+", "-", "*"]:
-                if operator in name:
-                    # Split the name at the first operator and wrap the left part
-                    parts = name.split(operator, 1)
-                    # Remove quotes if they exist at the edges
-                    col_part = parts[0].strip()
-                    if col_part.startswith('"') and col_part.endswith('"'):
-                        col_part = col_part[1:-1].strip()
-                    col_part = col_part.replace('"', '\\"')
-                    return f'["{col_part}"] {operator} {parts[1].strip()}'  # Wrap the column part
-        # No operators found, just wrap the entire name
+                pos = KustoKqlCompiler._find_top_level_operator(inner, operator)
+                if pos != -1:
+                    left = KustoKqlCompiler._escape_and_quote_columns(
+                        inner[:pos].strip()
+                    )
+                    right = KustoKqlCompiler._escape_and_quote_columns(
+                        inner[pos + 1 :].strip()
+                    )
+                    return (
+                        "(" * outer_paren_count
+                        + left
+                        + " "
+                        + operator
+                        + " "
+                        + right
+                        + ")" * outer_paren_count
+                    )
+            # No operators - just process inner content (don't re-add unnecessary parens)
+            if outer_paren_count > 0:
+                return KustoKqlCompiler._escape_and_quote_columns(inner)
+        # No operators found - strip surrounding quotes if present, then wrap
+        if name.startswith('"') and name.endswith('"'):
+            name = name[1:-1]
         name = name.replace('"', '\\"')
         return f'["{name}"]'
 
@@ -547,7 +791,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     @staticmethod
     def _is_number_literal(s: str) -> bool:
-        pattern = r"^[0-9]+$"
+        pattern = r"^\d+(\.\d+)?$"
         return bool(re.match(pattern, s))
 
     def _get_most_inner_element(self, clause):
