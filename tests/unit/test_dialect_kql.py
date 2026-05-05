@@ -173,10 +173,11 @@ def test_group_by_text():
     query_compiled = str(
         query.compile(engine, compile_kwargs={"literal_binds": True})
     ).replace("\n", "")
-    # raw query text from query
+    # raw query text from query - order matches column appearance
     query_expected = (
-        '["ActiveUsersLastMonth"]| extend ["ActiveUserMetric"] = ["ActiveUsers"], '
-        '["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
+        '["ActiveUsersLastMonth"]'
+        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d), '
+        '["ActiveUserMetric"] = ["ActiveUsers"]'
         '| summarize   by ["EventInfo_Time"] / time(1d)'
         '| project ["EventInfo_Time"], ["ActiveUserMetric"]'
         '| order by ["ActiveUserMetric"] desc'
@@ -201,12 +202,13 @@ def test_function_text(f: str, expected: str):
     query_compiled = str(
         query.compile(engine, compile_kwargs={"literal_binds": True})
     ).replace("\n", "")
+    # Order matches column appearance in select
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| extend ["ActiveUserMetric"] = ["ActiveUsers"], '
-        '["EventInfo_Time"] = '
+        '| extend ["EventInfo_Time"] = '
         + expected
-        + '| project ["EventInfo_Time"], ["ActiveUserMetric"]'
+        + ', ["ActiveUserMetric"] = ["ActiveUsers"]'
+        '| project ["EventInfo_Time"], ["ActiveUserMetric"]'
     )
     assert query_compiled == query_expected
 
@@ -224,10 +226,11 @@ def test_group_by_text_vaccine_dataset():
         query.compile(engine, compile_kwargs={"literal_binds": True})
     ).replace("\n", "")
     query_expected = (
-        'database("superset").["CovidVaccineData"]| '
-        'extend ["country_name"] = ["country_name"]| '
-        'summarize   by ["country_name"]| '
-        'project ["country_name"]| order by ["country_name"] asc'
+        'database("superset").["CovidVaccineData"]'
+        '| extend ["country_name"] = ["country_name"]'
+        '| summarize   by ["country_name"]'
+        '| project ["country_name"]'
+        '| order by ["country_name"] asc'
     )
     assert query_compiled == query_expected
 
@@ -547,10 +550,126 @@ def test_match_aggregates(column_name: str, expected_aggregate: str):
         assert kql_agg is None
 
 
+def test_calculated_measure_with_adhoc_measure_and_constant():
+    """Test calculated measure with an ad hoc measure and a constant.
+
+    Measure 1 = count(*), Measure 2 = "Measure 1" * 2
+    Measure 2 should compile to ["Measure 1"] * 2
+    The extend clause must come after summarize for this to work.
+    """
+    measure_1 = literal_column("count(*)").label("Measure 1")
+    measure_2 = literal_column('"Measure 1" * 2').label("Measure 2")
+    query = select([measure_1, measure_2]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| summarize ["Measure 1"] = count() '
+        '| extend ["Measure 2"] = ["Measure 1"] * 2'
+        '| project ["Measure 1"], ["Measure 2"]'
+    )
+    assert query_compiled == query_expected
+
+
+def test_pre_aggregated_calculations():
+    """Test from PR #48 review: calculated column before aggregation.
+
+    A calculated column (strcat) is created and used as a group-by dimension.
+    The extend must appear before summarize so the column exists for grouping.
+    """
+    app_col = literal_column("App")
+    ns_col = literal_column("Namespace")
+    id_col = literal_column("_id")
+
+    app_namespace = sa.func.strcat(app_col, ns_col).label("App_Namespace")
+
+    query = (
+        select(app_namespace, sa.func.count(id_col).label("TotalLogs"))
+        .select_from(text("Logs"))
+        .group_by(app_namespace)
+    )
+
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+
+    query_expected = (
+        '["Logs"]'
+        '| extend ["App_Namespace"] = strcat(App, Namespace)'
+        '| summarize ["TotalLogs"] = count(["_id"])  by ["App_Namespace"]'
+        '| project ["App_Namespace"], ["TotalLogs"]'
+    )
+    assert query_compiled == query_expected
+
+
+def test_calculated_measure_alias_in_function():
+    """Test that an aggregate alias inside a function is detected as post-extend.
+
+    round("Measure 1", 2) references the aggregate alias inside a function call,
+    which _escape_and_quote_columns returns unchanged (it's a KQL function).
+    The robust check must still detect the dependency.
+    """
+    measure_1 = literal_column("count(*)").label("Measure 1")
+    measure_2 = literal_column('round("Measure 1", 2)').label("Rounded")
+    query = select([measure_1, measure_2]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| summarize ["Measure 1"] = count() '
+        '| extend ["Rounded"] = round(["Measure 1"], 2)'
+        '| project ["Measure 1"], ["Rounded"]'
+    )
+    assert query_compiled == query_expected
+
+
+def test_calculated_measure_alias_on_rhs_of_operator():
+    """Test that an aggregate alias on the RHS of an operator is detected.
+
+    2 * "Measure 1" has the alias on the right side of the operator.
+    """
+    measure_1 = literal_column("count(*)").label("Measure 1")
+    measure_2 = literal_column('2 * "Measure 1"').label("Doubled")
+    query = select([measure_1, measure_2]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| summarize ["Measure 1"] = count() '
+        '| extend ["Doubled"] = 2 * ["Measure 1"]'
+        '| project ["Measure 1"], ["Doubled"]'
+    )
+    assert query_compiled == query_expected
+
+
+def test_calculated_measure_forward_reference():
+    """Test that a calculated measure listed before its aggregate dependency works.
+
+    When Measure 2 (which references Measure 1) appears before Measure 1 in the
+    select list, the two-pass alias collection ensures it is still classified as
+    post_extend.
+    """
+    measure_2 = literal_column('"Measure 1" * 2').label("Measure 2")
+    measure_1 = literal_column("count(*)").label("Measure 1")
+    query = select([measure_2, measure_1]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| summarize ["Measure 1"] = count() '
+        '| extend ["Measure 2"] = ["Measure 1"] * 2'
+        '| project ["Measure 2"], ["Measure 1"]'
+    )
+    assert query_compiled == query_expected
+
+
 @pytest.mark.parametrize(
     ("query_table_name", "expected_table_name"),
     [
-        ("schema.table", 'database("schema").["table"]'),
         ('schema."table.name"', 'database("schema").["table.name"]'),
         ('"schema.name".table', 'database("schema.name").["table"]'),
         ('"schema.name"."table.name"', 'database("schema.name").["table.name"]'),

@@ -142,9 +142,12 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 )
                 compiled_query_lines.append(f"| where {converted_where_clause}")
 
-        if "extend" in projections_parts_dict:
-            compiled_query_lines.append(projections_parts_dict.pop("extend"))
+        # Add clauses in correct order: pre-extend, summarize, post-extend
+        for key in ("pre_extend", "summarize", "post_extend"):
+            if key in projections_parts_dict:
+                compiled_query_lines.append(projections_parts_dict.pop(key))
 
+        # Add remaining parts (project, sort)
         for statement_part in projections_parts_dict.values():
             if statement_part:
                 compiled_query_lines.append(statement_part)
@@ -198,7 +201,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         group_by_cols = select._group_by_clauses
         order_by_cols = select._order_by_clauses
         summarize_statement = ""
-        extend_statement = ""
+        pre_extend_statement = ""
+        post_extend_statement = ""
         project_statement = ""
         has_aggregates = False
         # The following is the logic
@@ -213,9 +217,17 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         #                N---> Add to projection
         if columns is not None:
             summarize_columns = set()
-            extend_columns = set()
+            pre_extend_columns: list[str] = []
+            post_extend_columns: list[str] = []
             projection_columns = []
-            for column in [c for c in columns if c.name != "*"]:
+
+            # Two-pass approach: first collect all aggregate aliases so that
+            # forward references (a calculated measure listed before the
+            # aggregate it depends on) are classified correctly.
+            columns_list = [c for c in columns if c.name != "*"]
+            all_agg_aliases_raw = self._collect_aggregate_aliases(columns_list)
+
+            for column in columns_list:
                 column_name, column_alias = self._extract_column_name_and_alias(column)
                 column_alias = self._escape_and_quote_columns(column_alias, True)
                 # Do we have a group by clause ?
@@ -230,9 +242,21 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 # Do the columns have aliases ?
                 # Add additional and to handle case where : SELECT column_name as column_name
                 elif column_alias and column_alias != column_name:
-                    extend_columns.add(
-                        self._build_column_projection(column_name, column_alias, True)
+                    extend_entry = self._build_column_projection(
+                        column_name, column_alias, True
                     )
+
+                    # Calculated measures (aggregate-dependent) go after summarize;
+                    # calculated columns (no aggregate dependency) go before summarize
+                    target = (
+                        post_extend_columns
+                        if self._expression_references_aliases(
+                            column_name, all_agg_aliases_raw
+                        )
+                        else pre_extend_columns
+                    )
+                    target.append(extend_entry)
+
                 if column_alias:
                     projection_columns.append(
                         self._escape_and_quote_columns(column_alias, True)
@@ -251,8 +275,10 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     summarize_statement = (
                         f"{summarize_statement} by {', '.join(by_columns)}"
                     )
-            if extend_columns:
-                extend_statement = f"| extend {', '.join(sorted(extend_columns))}"
+            if pre_extend_columns:
+                pre_extend_statement = f"| extend {', '.join(pre_extend_columns)}"
+            if post_extend_columns:
+                post_extend_statement = f"| extend {', '.join(post_extend_columns)}"
             project_statement = (
                 f"| project {', '.join(projection_columns)}"
                 if projection_columns
@@ -263,7 +289,8 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             f"| order by {', '.join(unwrapped_order_by)}" if unwrapped_order_by else ""
         )
         return {
-            "extend": extend_statement,
+            "pre_extend": pre_extend_statement,
+            "post_extend": post_extend_statement,
             "summarize": summarize_statement,
             "project": project_statement,
             "sort": sort_statement,
@@ -347,6 +374,45 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
         return modified_expression
 
+    def _collect_aggregate_aliases(self, columns_list) -> set[str]:
+        """Pre-scan columns to collect all aggregate aliases.
+
+        This ensures calculated measures that forward-reference an aggregate
+        defined later in the select list are still classified correctly.
+        """
+        aliases: set[str] = set()
+        for column in columns_list:
+            column_name, _ = self._extract_column_name_and_alias(column)
+            if self._extract_maybe_agg_column_parts(column_name):
+                _, col_alias = self._extract_column_name_and_alias(column)
+                col_alias = self._escape_and_quote_columns(col_alias, True)
+                if col_alias:
+                    raw = col_alias
+                    if raw.startswith('["') and raw.endswith('"]'):
+                        raw = raw[2:-2]
+                    aliases.add(raw)
+        return aliases
+
+    @staticmethod
+    def _expression_references_aliases(expression: str, raw_aliases: set[str]) -> bool:
+        """Check if an expression references any aggregate alias.
+
+        Checks for both double-quoted ("alias") and KQL-escaped (["alias"])
+        forms across the entire expression, including inside function calls
+        and on either side of operators.
+        """
+        for alias in raw_aliases:
+            escaped_alias = re.escape(alias)
+            # Match ["alias"] or "alias" anywhere in the expression
+            if re.search(rf'\["{escaped_alias}"\]|"{escaped_alias}"', expression):
+                return True
+            # For simple identifiers, also match unquoted bare references
+            if re.fullmatch(r"[A-Za-z_]\w*", alias) and re.search(
+                rf"\b{escaped_alias}\b", expression
+            ):
+                return True
+        return False
+
     @staticmethod
     def _escape_and_quote_columns(name: str | None, is_alias=False) -> str:
         if name is None:
@@ -371,10 +437,15 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                     parts = name.split(operator, 1)
                     # Remove quotes if they exist at the edges
                     col_part = parts[0].strip()
+                    rhs = parts[1].strip()
+                    # If LHS is a numeric literal, keep it as-is and escape the RHS
+                    if KustoKqlCompiler._is_number_literal(col_part):
+                        escaped_rhs = KustoKqlCompiler._escape_and_quote_columns(rhs)
+                        return f"{col_part} {operator} {escaped_rhs}"
                     if col_part.startswith('"') and col_part.endswith('"'):
                         col_part = col_part[1:-1].strip()
                     col_part = col_part.replace('"', '\\"')
-                    return f'["{col_part}"] {operator} {parts[1].strip()}'  # Wrap the column part
+                    return f'["{col_part}"] {operator} {rhs}'  # Wrap the column part
         # No operators found, just wrap the entire name
         name = name.replace('"', '\\"')
         return f'["{name}"]'
