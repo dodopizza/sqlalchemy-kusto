@@ -107,7 +107,7 @@ class KustoKqlCompiler(compiler.SQLCompiler):
         from_object = select_stmt.get_final_froms()[0]
         if hasattr(from_object, "element"):
             query = self._get_most_inner_element(from_object.element)
-            (main, lets) = self._extract_let_statements(query.text)
+            main, lets = self._extract_let_statements(query.text)
             compiled_query_lines.extend(lets)
             compiled_query_lines.append(
                 f"let {from_object.name} = ({self._convert_schema_in_statement(main)});"

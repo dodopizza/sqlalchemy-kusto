@@ -38,6 +38,7 @@ class KustoSqlCompiler(compiler.SQLCompiler):
 class KustoSqlHttpsDialect(KustoBaseDialect):
     name = "kustosql"
     statement_compiler = KustoSqlCompiler
+    supports_native_boolean = False
     # For some reason supports_statement_cache
     # doesn't work when defined in the KustoBaseDialect.
     # Need to investigate why it happens.
