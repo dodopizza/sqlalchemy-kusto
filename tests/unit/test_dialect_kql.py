@@ -574,3 +574,51 @@ def test_schema_from_query(query_table_name: str, expected_table_name: str):
 
     query_expected = f"let inner_qry = ({expected_table_name});inner_qry| take 5"
     assert query_compiled == query_expected
+
+
+def test_logical_operators_and_literals_precedence():
+    val_and = "DATA AND ANALYTICS"
+    val_or = "OPEN OR CLOSED"
+
+    condition = sa.and_(
+        sa.or_(column("Field1") == val_and, column("Field2") == val_or),
+        column("Status") == "ACTIVE",
+    )
+
+    query = select([column("Field1")]).select_from(text("logs")).where(condition)
+
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", " ")
+
+    expected_full = (
+        '["logs"] '
+        f"| where ([\"Field1\"] == '{val_and}' or [\"Field2\"] == '{val_or}') and [\"Status\"] == 'ACTIVE' "
+        '| project ["Field1"]'
+    )
+    assert query_compiled == expected_full
+
+
+def test_logical_operators_precedence_and_casing():
+    """
+    Test that 'or' inside 'and' gets parentheses (required),
+    but 'and' inside 'or' does not (not required by precedence).
+    """
+
+    cond_nested_or = sa.and_(
+        sa.or_(column("A") == 1, column("B") == 2),
+        column("C") == 3
+    )
+    query1 = select([column("Field")]).select_from(text("logs")).where(cond_nested_or)
+    compiled1 = str(query1.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", " ")
+
+    assert '(["A"] == 1 or ["B"] == 2) and ["C"] == 3' in compiled1
+
+    cond_nested_and = sa.or_(
+        column("A") == 1,
+        sa.and_(column("B") == 2, column("C") == 3)
+    )
+    query2 = select([column("Field")]).select_from(text("logs")).where(cond_nested_and)
+    compiled2 = str(query2.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", " ")
+
+    assert '["A"] == 1 or ["B"] == 2 and ["C"] == 3' in compiled2
