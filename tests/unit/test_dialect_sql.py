@@ -263,30 +263,28 @@ class TestTranslateRawDateTrunc:
         assert "date_trunc('hour', ts)" in result
 
 
-class TestKustoSqlDialectDoExecute:
-    """KustoSqlHttpsDialect.do_execute must translate date_trunc before the cursor sees the SQL."""
+class TestCursorDateTruncTranslation:
+    """Cursor.execute must translate date_trunc before sending SQL to Kusto."""
 
-    def _dialect(self) -> KustoSqlHttpsDialect:
-        return KustoSqlHttpsDialect()
+    def _cursor(self):
+        from sqlalchemy_kusto.dbapi import Cursor
 
-    def test_date_trunc_translated_before_cursor(self):
-        cursor = MagicMock()
-        self._dialect().do_execute(
-            cursor, "SELECT date_trunc('day', ts) FROM t", [], context=None
-        )
-        cursor.execute.assert_called_once()
-        received_sql: str = cursor.execute.call_args[0][0]
+        client = MagicMock()
+        response = MagicMock()
+        response.primary_results = [MagicMock(columns=[], **{"__iter__": lambda s: iter([])})]
+        client.execute.return_value = response
+        return Cursor(client, "testdb"), client
+
+    def test_date_trunc_translated_before_kusto(self):
+        cursor, client = self._cursor()
+        cursor.execute("SELECT date_trunc('day', ts) FROM t")
+        received_sql: str = client.execute.call_args[0][1]
         assert "DATEADD(day" in received_sql
         assert "date_trunc(" not in received_sql.lower()
 
-    def test_parameters_forwarded_unchanged(self):
-        cursor = MagicMock()
-        params = {"id": 42}
-        self._dialect().do_execute(cursor, "SELECT id FROM t", params, context=None)
-        cursor.execute.assert_called_once_with("SELECT id FROM t", params)
-
     def test_sql_without_date_trunc_forwarded_unchanged(self):
-        cursor = MagicMock()
+        cursor, client = self._cursor()
         sql = "SELECT id, name FROM users WHERE active = 1"
-        self._dialect().do_execute(cursor, sql, [], context=None)
-        cursor.execute.assert_called_once_with(sql, [])
+        cursor.execute(sql)
+        received_sql: str = client.execute.call_args[0][1]
+        assert received_sql.rstrip() == sql
