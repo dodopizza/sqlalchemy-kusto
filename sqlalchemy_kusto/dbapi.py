@@ -198,7 +198,10 @@ class Connection:
         self.cursors: list[Cursor] = []
         kcsb = None
 
-        if azure_ad_client_id and azure_ad_client_secret and azure_ad_tenant_id:
+        if cluster.startswith("http://"):
+            # Plain HTTP means the Kusto emulator: it has no TLS and no authentication.
+            kcsb = KustoConnectionStringBuilder(cluster)
+        elif azure_ad_client_id and azure_ad_client_secret and azure_ad_tenant_id:
             # Service Principal auth
             kcsb = KustoConnectionStringBuilder.with_aad_application_key_authentication(
                 connection_string=cluster,

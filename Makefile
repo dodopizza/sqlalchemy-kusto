@@ -1,4 +1,4 @@
-.PHONY: venv install install-dev build clean check test unit integration release pypi
+.PHONY: venv install install-dev build clean check test unit integration emulator emulator-stop release pypi
 -include .env
 
 ##############################################################################
@@ -58,10 +58,27 @@ unit: # Run unit tests
 	$(PYTHON) -m pytest -v tests/unit/
 	@echo "Done.\n"
 
-integration: # Run integration tests
+integration: # Run integration tests (against the emulator unless KUSTO_URL is set)
 	@echo "Running integration tests..."
 	$(PYTHON) -m pytest -v tests/integration/
 	@echo "Done.\n"
+
+##############################################################################
+# Kusto emulator (local target for the integration tests)
+##############################################################################
+EMULATOR_IMAGE = mcr.microsoft.com/azuredataexplorer/kustainer-linux:latest
+EMULATOR_NAME = kustainer
+
+emulator: # Start the Kusto emulator and wait until it answers
+	@echo "Starting the Kusto emulator..."
+	docker run -e ACCEPT_EULA=Y -m 4G -d -p 8080:8080 --name $(EMULATOR_NAME) $(EMULATOR_IMAGE)
+	@echo "Waiting for the query engine..."
+	@until curl -s -m 3 -o /dev/null -X POST -H 'Content-Type: application/json' \
+		-d '{"csl":".show cluster"}' http://localhost:8080/v1/rest/mgmt; do sleep 2; done
+	@echo "Ready on http://localhost:8080 (database NetDefaultDB).\n"
+
+emulator-stop: # Remove the emulator container
+	-docker rm -f $(EMULATOR_NAME)
 
 ##############################################################################
 # Build and cleanup

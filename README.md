@@ -105,6 +105,33 @@ kustokql+https://<CLUSTER_URL>/<DATABASE>?azure_ad_client_id=<CLIENT_ID>&azure_a
 > 
 > Current `master` branch of the `apache/superset` dependent on `sqlalchemy==1.4.36`. If you want to use `sqlalchemy-kusto` with the latest unstable version of `apache/superset`, you need to install version `2.*` of the package.
 
+## Running the tests
+
+Unit tests need nothing but the package itself:
+
+```shell
+make unit
+```
+
+Integration tests run against a local [Kusto emulator](https://learn.microsoft.com/en-us/azure/data-explorer/kusto-emulator-overview),
+so they need neither a cluster nor credentials:
+
+```shell
+make emulator      # starts the kustainer-linux container on http://localhost:8080
+make integration
+make emulator-stop
+```
+
+The emulator has no TLS and no authentication, hence the `kustosql+http://` URL:
+
+```
+kustosql+http://localhost:8080/NetDefaultDB
+```
+
+To run the same tests against a real cluster instead, set `KUSTO_URL`, `DATABASE` and
+the `AZURE_AD_*` variables (see `.env.sample`). When neither the emulator nor a cluster
+is reachable, the integration tests are skipped rather than failed.
+
 ## Contributing
 
 Please see the [CONTRIBUTING.md](.github/CONTRIBUTING.md) for development setup and contributing process guidelines.

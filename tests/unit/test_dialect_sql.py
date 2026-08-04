@@ -66,46 +66,50 @@ def test_boolean_filter_full_query():
 
 
 class TestOrderByWithoutLimit:
-    """Kusto drops ORDER BY unless the same SELECT carries a TOP."""
+    """Kusto rejects ORDER BY in a nested SELECT that has no TOP; top level is fine."""
 
     events = Table("events", MetaData(), Column("score", Integer))
 
-    def test_order_by_without_limit_inserts_top_fallback(self):
-        sql = _compile(
-            select([self.events.c.score]).order_by(self.events.c.score.desc())
-        )
-        assert "TOP 500000" in sql
+    def _ordered(self):
+        return select([self.events.c.score]).order_by(self.events.c.score.desc())
+
+    def test_top_level_order_by_gets_no_top(self):
+        """Kusto sorts a top-level ORDER BY on its own: a TOP would only cap the result."""
+        sql = _compile(self._ordered())
         assert "ORDER BY" in sql
+        assert "TOP" not in sql
 
     def test_order_by_with_limit_uses_limit_not_double_top(self):
-        query = (
-            select([self.events.c.score]).order_by(self.events.c.score.desc()).limit(10)
-        )
-        sql = _compile(query)
+        sql = _compile(self._ordered().limit(10))
         assert sql.count("TOP") == 1
         assert "TOP 10" in sql
 
     def test_select_without_order_by_no_extra_top(self):
         assert "TOP" not in _compile(select([self.events.c.score]))
 
-    def test_inner_order_by_survives_outer_limit(self):
-        """Superset wraps the query; the inner ORDER BY needs its own TOP."""
-        inner = (
-            select([self.events.c.score])
-            .order_by(self.events.c.score.desc())
-            .alias("v")
-        )
-        sql = _compile(select([inner.c.score]).limit(100))
+    def test_nested_order_by_gets_top(self):
+        """Superset's WRAP_SQL shape: the inner ORDER BY needs a TOP of its own."""
+        sql = _compile(select([self._ordered().alias("virtual_table")]).limit(100))
         assert "TOP 500000" in sql
         assert "TOP 100" in sql
         assert "ORDER BY" in sql
+
+    def test_nested_order_by_with_own_limit_keeps_it(self):
+        inner = self._ordered().limit(20).alias("virtual_table")
+        sql = _compile(select([inner]).limit(100))
+        assert "TOP 20" in sql
+        assert "TOP 500000" not in sql
+
+    def test_nested_select_without_order_by_gets_no_top(self):
+        inner = select([self.events.c.score]).alias("virtual_table")
+        assert "TOP" not in _compile(select([inner]))
 
     def test_top_fallback_value_is_configurable(self):
         """max_top_n must be settable the way callers actually set it."""
         custom_engine = create_engine(
             "kustosql+https://localhost/testdb", max_top_n=999
         )
-        query = select([self.events.c.score]).order_by(self.events.c.score.desc())
+        query = select([self._ordered().alias("virtual_table")]).limit(100)
         assert "TOP 999" in _compile(query, custom_engine)
 
 

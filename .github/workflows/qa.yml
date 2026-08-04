@@ -58,3 +58,15 @@ jobs:
 
       - name: Run unit tests
         run: make unit
+
+      # The emulator runs the real Kusto query engine locally, so the integration
+      # tests need no cluster and no credentials.
+      - name: Start the Kusto emulator
+        run: make emulator
+
+      - name: Run integration tests
+        run: make integration
+
+      - name: Stop the Kusto emulator
+        if: always()
+        run: make emulator-stop

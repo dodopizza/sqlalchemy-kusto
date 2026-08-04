@@ -6,11 +6,7 @@ import io
 
 import pytest
 import sqlalchemy.types
-from azure.kusto.data import (
-    ClientRequestProperties,
-    KustoClient,
-    KustoConnectionStringBuilder,
-)
+from azure.kusto.data import ClientRequestProperties, KustoClient
 from sqlalchemy import (
     Column,
     MetaData,
@@ -29,16 +25,21 @@ from tests.integration.conftest import (
     AZURE_AD_TENANT_ID,
     DATABASE,
     KUSTO_KQL_ALCHEMY_URL,
-    KUSTO_URL,
+    USES_EMULATOR,
+    get_kcsb,
 )
 
 logger = logging.getLogger(__name__)
 
 kql_engine = create_engine(
-    f"{KUSTO_KQL_ALCHEMY_URL}/{DATABASE}?"
-    f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
-    f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
-    f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
+    f"{KUSTO_KQL_ALCHEMY_URL}/{DATABASE}"
+    if USES_EMULATOR
+    else (
+        f"{KUSTO_KQL_ALCHEMY_URL}/{DATABASE}?"
+        f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
+        f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
+        f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
+    )
 )
 
 Session = sessionmaker(bind=kql_engine)
@@ -200,18 +201,6 @@ def test_date_bin_ops(test_label, group_fn, temp_table_name, expected, compare_d
             else {expected}
         )
         assert actual_result == expected_records
-
-
-def get_kcsb():
-    return (
-        KustoConnectionStringBuilder.with_az_cli_authentication(KUSTO_URL)
-        if not AZURE_AD_CLIENT_ID
-        and not AZURE_AD_CLIENT_SECRET
-        and not AZURE_AD_TENANT_ID
-        else KustoConnectionStringBuilder.with_aad_application_key_authentication(
-            KUSTO_URL, AZURE_AD_CLIENT_ID, AZURE_AD_CLIENT_SECRET, AZURE_AD_TENANT_ID
-        )
-    )
 
 
 def _create_temp_table(table_name: str):

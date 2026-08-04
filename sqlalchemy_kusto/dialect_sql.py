@@ -36,11 +36,12 @@ class KustoSqlCompiler(compiler.SQLCompiler):
         if select._limit_clause is not None:
             kw["literal_execute"] = True
             select_precolumns += f"TOP {self.process(select._limit_clause, **kw)} "
-        elif select._order_by_clauses:
-            # Kusto T-SQL drops ORDER BY unless the same SELECT also carries a TOP,
-            # which is how Superset loses sorting on the inner query of a wrapped SELECT.
-            # ponytail: silently caps the result at max_top_n rows; pass a bigger
-            # max_top_n to create_engine if a dataset can legitimately exceed it.
+        elif select._order_by_clauses and len(self.stack) > 1:
+            # Kusto rejects ORDER BY inside a nested SELECT unless it also carries a
+            # TOP (verified against the Kusto emulator), and Superset's WRAP_SQL limit
+            # method produces exactly that shape. A top-level ORDER BY needs no TOP, so
+            # it must not get one — that would cap an otherwise unbounded query.
+            # ponytail: caps a nested sort at max_top_n rows; raise it via create_engine.
             select_precolumns += f"TOP {self.dialect.max_top_n} "
 
         return select_precolumns
@@ -76,10 +77,19 @@ class KustoSqlHttpsDialect(KustoBaseDialect):
     supports_statement_cache = True
 
     def __init__(self, max_top_n: int = 500_000, **kwargs):
-        """Row cap used for ORDER BY without LIMIT.
+        """Row cap used for a nested ORDER BY that has no LIMIT of its own.
 
         Override per engine: create_engine(url, max_top_n=1_000_000). In Superset it
         goes into the database's Advanced → Other → Engine Parameters.
         """
         super().__init__(**kwargs)
         self.max_top_n = max_top_n
+
+
+class KustoSqlHttpDialect(KustoSqlHttpsDialect):
+    """Plain-HTTP variant, for the Kusto emulator: no TLS, no authentication."""
+
+    driver = "http"
+    # SQLAlchemy looks this up on the concrete dialect class, not on its bases,
+    # which is also why KustoSqlHttpsDialect repeats it instead of inheriting it.
+    supports_statement_cache = True
