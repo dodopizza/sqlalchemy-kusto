@@ -1,15 +1,20 @@
-from __future__ import annotations
-from sqlalchemy import Boolean, Column, Integer, MetaData, Table, create_engine, select
-
 from unittest.mock import MagicMock
 
-from sqlalchemy import DateTime, func
+import pytest
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Integer,
+    MetaData,
+    Table,
+    create_engine,
+    exc,
+    func,
+    select,
+)
 
-from sqlalchemy_kusto.dialect_sql import KustoSqlHttpsDialect, _translate_raw_date_trunc
-
-engine = create_engine("kustosql+https://localhost/testdb")
-
-
+from sqlalchemy_kusto.dbapi import Cursor, _translate_raw_date_trunc
 
 engine = create_engine("kustosql+https://localhost/testdb")
 
@@ -23,12 +28,18 @@ orders = Table(
 )
 
 
+def _compile(query, bind=engine) -> str:
+    return str(query.compile(bind, compile_kwargs={"literal_binds": True})).replace(
+        "\n", " "
+    )
+
+
 def test_boolean_false_renders_as_zero():
     """Kusto T-SQL does not support `false`/`true` literals; they must be 1/0."""
     query = select(orders.c.TotalAmount).where(
         orders.c.IsCorporateOrder == False  # noqa: E712
     )
-    sql = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+    sql = _compile(query)
     assert "false" not in sql.lower()
     assert "0" in sql
 
@@ -37,7 +48,7 @@ def test_boolean_true_renders_as_one():
     query = select(orders.c.TotalAmount).where(
         orders.c.IsCorporateOrder == True  # noqa: E712
     )
-    sql = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+    sql = _compile(query)
     assert "true" not in sql.lower()
     assert "1" in sql
 
@@ -49,242 +60,228 @@ def test_boolean_filter_full_query():
         .where(orders.c.IsCorporateOrder == False)  # noqa: E712
         .group_by(orders.c.TotalAmount)
     )
-    sql = str(query.compile(engine, compile_kwargs={"literal_binds": True}))
+    sql = _compile(query)
     assert "false" not in sql.lower()
     assert "true" not in sql.lower()
 
-def _compile(query) -> str:
-    return str(query.compile(engine, compile_kwargs={"literal_binds": True})).replace("\n", " ")
-
 
 class TestOrderByWithoutLimit:
+    """Kusto drops ORDER BY unless the same SELECT carries a TOP."""
+
+    events = Table("events", MetaData(), Column("score", Integer))
+
     def test_order_by_without_limit_inserts_top_fallback(self):
-        t = Table("events", MetaData(), Column("score", Integer))
-        query = select([t.c.score]).order_by(t.c.score.desc())
-        sql = _compile(query)
-        assert "TOP" in sql
+        sql = _compile(
+            select([self.events.c.score]).order_by(self.events.c.score.desc())
+        )
+        assert "TOP 500000" in sql
         assert "ORDER BY" in sql
 
     def test_order_by_with_limit_uses_limit_not_double_top(self):
-        t = Table("events", MetaData(), Column("score", Integer))
-        query = select([t.c.score]).order_by(t.c.score.desc()).limit(10)
+        query = (
+            select([self.events.c.score]).order_by(self.events.c.score.desc()).limit(10)
+        )
         sql = _compile(query)
         assert sql.count("TOP") == 1
         assert "TOP 10" in sql
 
     def test_select_without_order_by_no_extra_top(self):
-        t = Table("events", MetaData(), Column("score", Integer))
-        query = select([t.c.score])
-        sql = _compile(query)
-        assert "TOP" not in sql
+        assert "TOP" not in _compile(select([self.events.c.score]))
+
+    def test_inner_order_by_survives_outer_limit(self):
+        """Superset wraps the query; the inner ORDER BY needs its own TOP."""
+        inner = (
+            select([self.events.c.score])
+            .order_by(self.events.c.score.desc())
+            .alias("v")
+        )
+        sql = _compile(select([inner.c.score]).limit(100))
+        assert "TOP 500000" in sql
+        assert "TOP 100" in sql
+        assert "ORDER BY" in sql
 
     def test_top_fallback_value_is_configurable(self):
-        custom_engine = create_engine("kustosql+https://localhost/testdb", connect_args={})
-        custom_engine.dialect.max_top_n = 999
-        t = Table("events", MetaData(), Column("score", Integer))
-        query = select([t.c.score]).order_by(t.c.score.desc())
-        sql = str(query.compile(custom_engine, compile_kwargs={"literal_binds": True}))
-        assert "TOP 999" in sql
+        """max_top_n must be settable the way callers actually set it."""
+        custom_engine = create_engine(
+            "kustosql+https://localhost/testdb", max_top_n=999
+        )
+        query = select([self.events.c.score]).order_by(self.events.c.score.desc())
+        assert "TOP 999" in _compile(query, custom_engine)
 
 
-class TestDateTrunc:
+class TestDateTruncCompiled:
+    """func.date_trunc() goes through the dialect hook."""
+
+    events = Table("events", MetaData(), Column("ts", DateTime))
+
     def _query(self, grain: str) -> str:
-        t = Table("events", MetaData(), Column("ts", DateTime))
-        query = select([func.date_trunc(grain, t.c.ts)])
-        return _compile(query)
+        return _compile(select([func.date_trunc(grain, self.events.c.ts)]))
 
-    def test_date_trunc_day(self):
-        sql = self._query("day")
-        assert "DATEADD(day" in sql
-        assert "DATEDIFF(day" in sql
-
-    def test_date_trunc_month(self):
-        sql = self._query("month")
-        assert "DATEADD(month" in sql
-        assert "DATEDIFF(month" in sql
-
-    def test_date_trunc_year(self):
-        sql = self._query("year")
-        assert "DATEADD(year" in sql
-        assert "DATEDIFF(year" in sql
-
-    def test_date_trunc_hour(self):
-        sql = self._query("hour")
-        assert "DATEADD(hour" in sql
-        assert "DATEDIFF(hour" in sql
-
-    def test_date_trunc_minute(self):
-        sql = self._query("minute")
-        assert "DATEADD(minute" in sql
-        assert "DATEDIFF(minute" in sql
-
-    def test_date_trunc_week(self):
-        sql = self._query("week")
-        # Must use the DATEADD(day,-1,...) shift for Monday-based ISO weeks
-        assert "DATEADD(week" in sql
-        assert "DATEDIFF(week" in sql
-        assert "DATEADD(day, -1," in sql
-
-    def test_date_trunc_week_sun(self):
-        sql = self._query("week_sun")
-        # Sunday-based: uses epoch -1 (1899-12-31 = Sunday), no day shift
-        assert "DATEADD(week" in sql
-        assert "DATEDIFF(week" in sql
-        assert ", -1," in sql or ", -1)" in sql
-        assert "DATEADD(day, -1," not in sql
-
-    def test_date_trunc_quarter(self):
-        sql = self._query("quarter")
-        assert "DATEADD(quarter" in sql
-        assert "DATEDIFF(quarter" in sql
-
-    def test_date_trunc_not_passed_through_verbatim(self):
-        sql = self._query("day")
+    @pytest.mark.parametrize(
+        ("grain", "part"),
+        [
+            ("second", "second"),
+            ("minute", "minute"),
+            ("hour", "hour"),
+            ("day", "day"),
+            ("month", "month"),
+            ("quarter", "quarter"),
+            ("year", "year"),
+        ],
+    )
+    def test_grain_maps_to_datepart(self, grain: str, part: str):
+        sql = self._query(grain)
+        assert f"DATEADD({part}," in sql
+        assert f"DATEDIFF({part}," in sql
         assert "date_trunc(" not in sql.lower()
 
-    def test_date_trunc_minute_uses_safe_epoch(self):
-        sql = self._query("minute")
-        assert "2000-01-01" in sql
+    def test_week_is_monday_based(self):
+        sql = self._query("week")
+        assert "DATEADD(day, -1," in sql  # ISO week shift
+        assert ", 0," in sql
 
-    def test_date_trunc_day_uses_zero_epoch(self):
-        sql = self._query("day")
-        assert ", 0," in sql or ", 0)" in sql
+    def test_week_sun_uses_sunday_epoch(self):
+        sql = self._query("week_sun")
+        assert "DATEADD(week," in sql
+        assert ", -1," in sql
+        assert "DATEADD(day, -1," not in sql
+
+    def test_sub_day_grain_uses_safe_epoch(self):
+        assert "2000-01-01" in self._query("minute")
+
+    def test_grain_is_case_insensitive(self):
+        assert "DATEADD(day," in self._query("DAY")
+
+    def test_unsupported_grain_fails_loudly(self):
+        with pytest.raises(exc.CompileError):
+            self._query("decade")
 
 
 class TestTranslateRawDateTrunc:
     """_translate_raw_date_trunc rewrites date_trunc() in a raw SQL string."""
 
-    def test_day_grain(self):
-        sql = "SELECT date_trunc('day', event_time) FROM events"
-        assert _translate_raw_date_trunc(sql) == (
-            "SELECT DATEADD(day, DATEDIFF(day, 0, event_time), 0) FROM events"
-        )
-
-    def test_month_grain(self):
-        sql = "SELECT date_trunc('month', ts) FROM t"
-        result = _translate_raw_date_trunc(sql)
-        assert result == "SELECT DATEADD(month, DATEDIFF(month, 0, ts), 0) FROM t"
-
-    def test_year_grain(self):
-        sql = "SELECT date_trunc('year', ts) FROM t"
-        result = _translate_raw_date_trunc(sql)
-        assert result == "SELECT DATEADD(year, DATEDIFF(year, 0, ts), 0) FROM t"
-
-    def test_week_grain(self):
-        sql = "SELECT date_trunc('week', ts) FROM t"
-        result = _translate_raw_date_trunc(sql)
-        assert result == "SELECT DATEADD(week, DATEDIFF(week, 0, DATEADD(day, -1, ts)), 0) FROM t"
-
-    def test_quarter_grain(self):
-        sql = "SELECT date_trunc('quarter', ts) FROM t"
-        result = _translate_raw_date_trunc(sql)
-        assert result == "SELECT DATEADD(quarter, DATEDIFF(quarter, 0, ts), 0) FROM t"
-
-    def test_hour_grain_uses_safe_epoch(self):
-        """Sub-day grains must use '2000-01-01' to avoid DATEDIFF integer overflow."""
-        sql = "SELECT date_trunc('hour', ts) FROM logs"
-        result = _translate_raw_date_trunc(sql)
-        assert result == (
-            "SELECT DATEADD(hour, DATEDIFF(hour, '2000-01-01', ts), '2000-01-01') FROM logs"
-        )
-
-    def test_minute_grain_uses_safe_epoch(self):
-        sql = "SELECT date_trunc('minute', ts) FROM logs"
-        result = _translate_raw_date_trunc(sql)
-        assert "DATEADD(minute" in result
-        assert "'2000-01-01'" in result
-
-    def test_second_grain_uses_safe_epoch(self):
-        sql = "SELECT date_trunc('second', ts) FROM logs"
-        result = _translate_raw_date_trunc(sql)
-        assert "DATEADD(second" in result
-        assert "'2000-01-01'" in result
-
-    def test_milliseconds_grain_maps_to_millisecond(self):
-        """'milliseconds' (plural) maps to T-SQL 'millisecond' (singular)."""
-        sql = "SELECT date_trunc('milliseconds', ts) FROM logs"
-        result = _translate_raw_date_trunc(sql)
-        assert "DATEADD(millisecond," in result
-        assert "'2000-01-01'" in result
-
-    def test_microseconds_grain_maps_to_millisecond(self):
-        """'microseconds' maps to 'millisecond' — T-SQL has no microsecond datepart."""
-        sql = "SELECT date_trunc('microseconds', ts) FROM logs"
-        result = _translate_raw_date_trunc(sql)
-        assert "DATEADD(millisecond," in result
+    @pytest.mark.parametrize(
+        ("sql", "expected"),
+        [
+            (
+                "SELECT date_trunc('day', event_time) FROM events",
+                "SELECT DATEADD(day, DATEDIFF(day, 0, event_time), 0) FROM events",
+            ),
+            (
+                "SELECT date_trunc('month', ts) FROM t",
+                "SELECT DATEADD(month, DATEDIFF(month, 0, ts), 0) FROM t",
+            ),
+            (
+                "SELECT date_trunc('year', ts) FROM t",
+                "SELECT DATEADD(year, DATEDIFF(year, 0, ts), 0) FROM t",
+            ),
+            (
+                "SELECT date_trunc('quarter', ts) FROM t",
+                "SELECT DATEADD(quarter, DATEDIFF(quarter, 0, ts), 0) FROM t",
+            ),
+            (
+                "SELECT date_trunc('week', ts) FROM t",
+                "SELECT DATEADD(week, DATEDIFF(week, 0, DATEADD(day, -1, ts)), 0) FROM t",
+            ),
+            (
+                "SELECT date_trunc('week_sun', ts) FROM t",
+                "SELECT DATEADD(week, DATEDIFF(week, -1, ts), -1) FROM t",
+            ),
+            (
+                "SELECT date_trunc('hour', ts) FROM logs",
+                "SELECT DATEADD(hour, DATEDIFF(hour, '2000-01-01', ts), '2000-01-01') FROM logs",
+            ),
+            (
+                # nested parentheses in the expression must survive intact
+                "SELECT date_trunc('day', CAST(ts AS DATETIME)) FROM logs",
+                "SELECT DATEADD(day, DATEDIFF(day, 0, CAST(ts AS DATETIME)), 0) FROM logs",
+            ),
+            (
+                # nesting is translated inside out
+                "SELECT date_trunc('day', date_trunc('hour', ts)) FROM t",
+                "SELECT DATEADD(day, DATEDIFF(day, 0, DATEADD(hour, "
+                "DATEDIFF(hour, '2000-01-01', ts), '2000-01-01')), 0) FROM t",
+            ),
+        ],
+    )
+    def test_translation(self, sql: str, expected: str):
+        assert _translate_raw_date_trunc(sql) == expected
 
     def test_grain_capitalisation_normalised(self):
-        """Grain is case-insensitive — 'Day' and 'DAY' must work like 'day'."""
         for grain in ("Day", "DAY", "dAy"):
-            sql = f"SELECT date_trunc('{grain}', ts) FROM t"
-            result = _translate_raw_date_trunc(sql)
-            assert "DATEADD(day" in result, f"Failed for grain={grain!r}: {result}"
-
-    def test_nested_parens_in_expr(self):
-        """Expressions containing parentheses must be preserved intact."""
-        sql = "SELECT date_trunc('day', CAST(ts AS DATETIME)) FROM logs"
-        result = _translate_raw_date_trunc(sql)
-        assert result == (
-            "SELECT DATEADD(day, DATEDIFF(day, 0, CAST(ts AS DATETIME)), 0) FROM logs"
-        )
+            result = _translate_raw_date_trunc(
+                f"SELECT date_trunc('{grain}', ts) FROM t"
+            )
+            assert "DATEADD(day," in result, f"failed for grain={grain!r}: {result}"
 
     def test_multiple_calls_in_one_query(self):
-        """Every occurrence is translated."""
-        sql = "SELECT date_trunc('day', a), date_trunc('hour', b) FROM t"
-        result = _translate_raw_date_trunc(sql)
-        assert "DATEADD(day" in result
-        assert "DATEADD(hour" in result
+        result = _translate_raw_date_trunc(
+            "SELECT date_trunc('day', a), date_trunc('hour', b) FROM t"
+        )
+        assert "DATEADD(day," in result
+        assert "DATEADD(hour," in result
         assert "date_trunc(" not in result.lower()
 
-    def test_week_sun_grain(self):
-        """week_sun uses epoch -1 (Sunday) with no day shift."""
-        sql = "SELECT date_trunc('week_sun', ts) FROM t"
-        result = _translate_raw_date_trunc(sql)
-        assert result == "SELECT DATEADD(week, DATEDIFF(week, -1, ts), -1) FROM t"
-
-    def test_unknown_grain_left_unchanged(self):
-        """An unrecognised grain is left as-is so Kusto surfaces the error."""
-        sql = "SELECT date_trunc('decade', ts) FROM t"
+    @pytest.mark.parametrize(
+        "sql",
+        [
+            # a value that merely looks like a call must not be rewritten
+            "SELECT * FROM t WHERE note = 'date_trunc(''day'', x)'",
+            "SELECT * FROM t WHERE note = \"date_trunc('day', x)\"",
+            # sub-second grains have no overflow-free form, so they are not supported
+            "SELECT date_trunc('milliseconds', ts) FROM logs",
+            "SELECT date_trunc('microseconds', ts) FROM logs",
+            # unrecognised grain: leave it for Kusto to reject
+            "SELECT date_trunc('decade', ts) FROM t",
+            # malformed calls stay as they are
+            "SELECT date_trunc('day' ts) FROM t",
+            "SELECT date_trunc('day', ts FROM t",
+            # nothing to do
+            "SELECT id, name FROM users WHERE active = 1",
+        ],
+    )
+    def test_left_unchanged(self, sql: str):
         assert _translate_raw_date_trunc(sql) == sql
 
-    def test_sql_without_date_trunc_returned_unchanged(self):
-        sql = "SELECT id, name FROM users WHERE active = 1"
-        assert _translate_raw_date_trunc(sql) == sql
-
-    def test_nested_date_trunc_outer_only_translated(self):
-        """Nested date_trunc — only the outer call is translated; inner remains as-is.
-
-        This is a known limitation of the single-pass scanner. In practice, nesting
-        date_trunc calls is not a valid SQL pattern in analytics SQL.
-        """
-        sql = "SELECT date_trunc('day', date_trunc('hour', ts)) FROM t"
-        result = _translate_raw_date_trunc(sql)
-        assert "DATEADD(day" in result
-        assert "date_trunc('hour', ts)" in result
+    def test_literal_next_to_a_real_call_is_preserved(self):
+        result = _translate_raw_date_trunc(
+            "SELECT date_trunc('day', ts) FROM t WHERE note = 'date_trunc(''day'', x)'"
+        )
+        assert result == (
+            "SELECT DATEADD(day, DATEDIFF(day, 0, ts), 0) FROM t "
+            "WHERE note = 'date_trunc(''day'', x)'"
+        )
 
 
 class TestCursorDateTruncTranslation:
-    """Cursor.execute must translate date_trunc before sending SQL to Kusto."""
+    """Cursor.execute translates T-SQL only, and leaves KQL alone."""
 
-    def _cursor(self):
-        from sqlalchemy_kusto.dbapi import Cursor
-
+    @staticmethod
+    def _cursor() -> tuple[Cursor, MagicMock]:
         client = MagicMock()
         response = MagicMock()
-        response.primary_results = [MagicMock(columns=[], **{"__iter__": lambda s: iter([])})]
+        response.primary_results = [
+            MagicMock(columns=[], **{"__iter__": lambda _: iter([])})
+        ]
         client.execute.return_value = response
         return Cursor(client, "testdb"), client
 
     def test_date_trunc_translated_before_kusto(self):
         cursor, client = self._cursor()
         cursor.execute("SELECT date_trunc('day', ts) FROM t")
-        received_sql: str = client.execute.call_args[0][1]
-        assert "DATEADD(day" in received_sql
+        received_sql = client.execute.call_args[0][1]
+        assert "DATEADD(day," in received_sql
         assert "date_trunc(" not in received_sql.lower()
 
     def test_sql_without_date_trunc_forwarded_unchanged(self):
         cursor, client = self._cursor()
         sql = "SELECT id, name FROM users WHERE active = 1"
         cursor.execute(sql)
-        received_sql: str = client.execute.call_args[0][1]
-        assert received_sql.rstrip() == sql
+        assert client.execute.call_args[0][1] == sql
+
+    def test_kql_query_is_never_rewritten(self):
+        """A KQL query is not T-SQL; DATEADD would be invalid there."""
+        cursor, client = self._cursor()
+        kql = "events | extend d = date_trunc('day', ts) | take 10"
+        cursor.execute(kql)
+        assert client.execute.call_args[0][1] == kql

@@ -12,117 +12,119 @@ from azure.kusto.data.exceptions import KustoAuthenticationError, KustoServiceEr
 
 from sqlalchemy_kusto import errors
 
-# PostgreSQL date_trunc grain → T-SQL datepart name
-_GRAIN_TO_TSQL: dict[str, str] = {
-    "microseconds": "millisecond",  # T-SQL has no microsecond
-    "milliseconds": "millisecond",
-    "second": "second",
-    "minute": "minute",
-    "hour": "hour",
-    "day": "day",
-    "week": "week",
-    "week_sun": "week",  # extension: Sunday-based week (not in PostgreSQL)
-    "month": "month",
-    "quarter": "quarter",
-    "year": "year",
+# PostgreSQL date_trunc grain → (T-SQL datepart, DATEDIFF base epoch).
+# Epoch 0 is 1900-01-01, a Monday. Sub-day grains use '2000-01-01' instead because
+# DATEDIFF(second, 0, <today>) overflows a 32-bit int.
+# week_sun uses epoch -1 = 1899-12-31, a Sunday, keeping weeks Sunday-aligned.
+# Grains finer than a second are deliberately absent: DATEDIFF(millisecond, ...)
+# overflows after 24 days from any fixed epoch, so there is no usable form.
+_GRAIN_TO_TSQL: dict[str, tuple[str, str]] = {
+    "second": ("second", "'2000-01-01'"),
+    "minute": ("minute", "'2000-01-01'"),
+    "hour": ("hour", "'2000-01-01'"),
+    "day": ("day", "0"),
+    "week": ("week", "0"),
+    "week_sun": ("week", "-1"),  # extension: Sunday-based week (not in PostgreSQL)
+    "month": ("month", "0"),
+    "quarter": ("quarter", "0"),
+    "year": ("year", "0"),
 }
 
-# Safe DATEDIFF base epoch per grain.
-# For sub-day grains, epoch 0 (1900-01-01) causes integer overflow; use 2000-01-01.
-# week_sun uses epoch -1 = 1899-12-31 (Sunday), so DATEADD/DATEDIFF stay in Sunday-aligned weeks.
-_GRAIN_EPOCH: dict[str, str] = {
-    "microseconds": "'2000-01-01'",
-    "milliseconds": "'2000-01-01'",
-    "second": "'2000-01-01'",
-    "minute": "'2000-01-01'",
-    "hour": "'2000-01-01'",
-    "day": "0",
-    "week": "0",
-    "week_sun": "-1",
-    "month": "0",
-    "quarter": "0",
-    "year": "0",
-}
+_DATE_TRUNC_MARKER = "date_trunc("
+
+
+def _date_trunc_expr(grain: str, expr: str) -> str | None:
+    """Build the T-SQL equivalent of date_trunc(grain, expr), or None if the grain is unknown.
+
+    Grain matching is case-insensitive and tolerates surrounding quotes.
+    """
+    key = grain.strip().strip("'\"").lower()
+    part_and_epoch = _GRAIN_TO_TSQL.get(key)
+    if part_and_epoch is None:
+        return None
+
+    part, epoch = part_and_epoch
+    if key == "week":
+        # DATEDIFF(week, ...) counts Sunday boundaries while epoch 0 is a Monday.
+        # Shifting the input back one day keeps Sunday inside the preceding Mon-Sun
+        # week, which is PostgreSQL's ISO (Monday-based) truncation.
+        expr = f"DATEADD(day, -1, {expr})"
+    return f"DATEADD({part}, DATEDIFF({part}, {epoch}, {expr}), {epoch})"
+
+
+def _skip_literal(sql: str, start: int) -> int:
+    """Return the index just past the string literal opening at `start`."""
+    quote = sql[start]
+    i = start + 1
+    while i < len(sql):
+        if sql[i] == quote:
+            if sql[i + 1 : i + 2] == quote:  # doubled quote escapes itself
+                i += 2
+                continue
+            return i + 1
+        i += 1
+    return len(sql)  # unterminated literal: treat the remainder as opaque
+
+
+def _split_date_trunc_args(sql: str, start: int) -> tuple[str, str, int] | None:
+    """Parse `grain, expr)` starting at `start`.
+
+    Returns (grain, expr, index just past the closing paren), or None when the call
+    is malformed, so the caller can leave such SQL for Kusto to reject.
+    """
+    depth = 1
+    comma = None
+    i = start
+    while i < len(sql):
+        char = sql[i]
+        if char in "'\"":
+            i = _skip_literal(sql, i)
+            continue
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+            if depth == 0:
+                return (sql[start:comma], sql[comma + 1 : i], i + 1) if comma else None
+        elif char == "," and depth == 1 and comma is None:
+            comma = i
+        i += 1
+    return None
 
 
 def _translate_raw_date_trunc(sql: str) -> str:
-    """Translate date_trunc('grain', expr) calls in a raw SQL string to T-SQL DATEADD/DATEDIFF.
+    """Rewrite date_trunc('grain', expr) in a raw SQL string as T-SQL DATEADD/DATEDIFF.
 
     Applied in Cursor.execute() so it covers every execution path including Superset SQLLab,
     which calls the DBAPI cursor directly via engine.raw_connection(), bypassing dialect hooks.
-    Grain and function name matching are case-insensitive. Unknown grains are left unchanged.
+    Function and grain names match case-insensitively; string literals and unknown grains
+    are left untouched.
     """
-    marker = "date_trunc("
     result: list[str] = []
-    i = 0
     sql_lower = sql.lower()
+    i = 0
 
     while i < len(sql):
-        pos = sql_lower.find(marker, i)
-        if pos == -1:
+        if sql[i] in "'\"":  # never rewrite anything inside a string literal
+            end = _skip_literal(sql, i)
+            result.append(sql[i:end])
+            i = end
+            continue
+
+        if not sql_lower.startswith(_DATE_TRUNC_MARKER, i):
+            result.append(sql[i])
+            i += 1
+            continue
+
+        parsed = _split_date_trunc_args(sql, i + len(_DATE_TRUNC_MARKER))
+        if parsed is None:
             result.append(sql[i:])
             break
 
-        result.append(sql[i:pos])
-
-        # Walk forward tracking depth to find the matching ')'.
-        depth = 1
-        j = pos + len(marker)
-        while j < len(sql) and depth > 0:
-            if sql[j] == "(":
-                depth += 1
-            elif sql[j] == ")":
-                depth -= 1
-            j += 1
-
-        if depth != 0:
-            # Unbalanced parentheses — leave the rest unchanged.
-            result.append(sql[pos:])
-            i = len(sql)
-            break
-
-        interior = sql[pos + len(marker) : j - 1]
-
-        # Split interior at the first top-level comma to get grain and expression.
-        comma_pos: int | None = None
-        inner_depth = 0
-        for k, ch in enumerate(interior):
-            if ch == "(":
-                inner_depth += 1
-            elif ch == ")":
-                inner_depth -= 1
-            elif ch == "," and inner_depth == 0:
-                comma_pos = k
-                break
-
-        if comma_pos is None:
-            # Malformed call — leave unchanged.
-            result.append(sql[pos:j])
-            i = j
-            continue
-
-        grain_raw = interior[:comma_pos].strip().strip("'\"")
-        grain = grain_raw.lower()
-        expr = interior[comma_pos + 1 :].strip()
-
-        part = _GRAIN_TO_TSQL.get(grain)
-        if part is None:
-            # Unknown grain — leave the whole call unchanged.
-            result.append(sql[pos:j])
-            i = j
-            continue
-
-        epoch = _GRAIN_EPOCH.get(grain, "0")
-        if grain == "week":
-            # T-SQL DATEDIFF(week,...) counts Sunday boundaries, but epoch 0 is Monday.
-            # Shift the input back 1 day so Sunday stays inside its Mon-Sat week,
-            # producing ISO-standard Monday-based truncation (matches PostgreSQL semantics).
-            result.append(
-                f"DATEADD({part}, DATEDIFF({part}, {epoch}, DATEADD(day, -1, {expr})), {epoch})"
-            )
-        else:
-            result.append(f"DATEADD({part}, DATEDIFF({part}, {epoch}, {expr}), {epoch})")
-        i = j
+        grain, expr, end = parsed
+        translated = _date_trunc_expr(grain, _translate_raw_date_trunc(expr.strip()))
+        result.append(translated if translated is not None else sql[i:end])
+        i = end
 
     return "".join(result)
 
@@ -314,10 +316,12 @@ class Cursor:
         """Executes query. Supports only SELECT statements."""
         if operation.lower().startswith("select"):
             self.properties.set_option("query_language", "sql")
+            # T-SQL only: a KQL query must never be rewritten.
+            operation = _translate_raw_date_trunc(operation)
         else:
             self.properties.set_option("query_language", "kql")
 
-        query = Cursor._apply_parameters(_translate_raw_date_trunc(operation), parameters)
+        query = Cursor._apply_parameters(operation, parameters)
         query = query.rstrip()
         try:
             server_response = self.kusto_client.execute(

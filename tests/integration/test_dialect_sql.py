@@ -99,6 +99,53 @@ def test_limit(temp_table_name):
     assert result_length == limit_rec_count
 
 
+def test_order_by_without_limit_is_actually_sorted(temp_table_name):
+    """Kusto keeps ORDER BY only when the SELECT also has a TOP; the dialect adds one."""
+    stream = Table(
+        temp_table_name,
+        MetaData(),
+        Column("Id", Integer),
+        Column("Text", String),
+    )
+
+    engine.connect()
+    result = engine.execute(stream.select().order_by(stream.c.Id.desc()))
+    ids = [row[0] for row in result.fetchall()]
+    assert ids == sorted(ids, reverse=True)
+
+
+def test_order_by_inside_wrapped_query_is_sorted(temp_table_name):
+    """Reproduces Superset's shape: outer SELECT with a limit over an ordered inner one."""
+    inner = f"(select * from {temp_table_name} order by Id desc)"
+
+    engine.connect()
+    result = engine.execute(f"select top 5 Id from {inner} as inner_qry")
+    ids = [row[0] for row in result.fetchall()]
+    assert ids == sorted(ids, reverse=True)
+
+
+@pytest.mark.parametrize(
+    ("grain", "expected"),
+    [
+        ("day", "2024-05-17 00:00:00"),
+        ("month", "2024-05-01 00:00:00"),
+        ("year", "2024-01-01 00:00:00"),
+        ("week", "2024-05-13 00:00:00"),  # Monday of that week
+        ("week_sun", "2024-05-12 00:00:00"),  # Sunday of that week
+        ("hour", "2024-05-17 10:00:00"),
+    ],
+)
+def test_raw_date_trunc(temp_table_name, grain: str, expected: str):
+    """date_trunc() written by hand in SQLLab must reach Kusto as DATEADD/DATEDIFF."""
+    engine.connect()
+    result = engine.execute(
+        f"select top 1 date_trunc('{grain}', "
+        f"CONVERT(DATETIME, '2024-05-17T10:30:45', 126)) as truncated "
+        f"from {temp_table_name}"
+    )
+    assert str(result.fetchone()[0]) == expected
+
+
 def get_kcsb():
     return (
         KustoConnectionStringBuilder.with_az_cli_authentication(KUSTO_URL)

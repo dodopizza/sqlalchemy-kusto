@@ -1,9 +1,9 @@
-from sqlalchemy import types
+from sqlalchemy import exc, types
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import compiler
 from sqlalchemy.sql.functions import GenericFunction
 
-from sqlalchemy_kusto.dbapi import _GRAIN_EPOCH, _GRAIN_TO_TSQL, _translate_raw_date_trunc  # noqa: F401
+from sqlalchemy_kusto.dbapi import _date_trunc_expr
 from sqlalchemy_kusto.dialect_base import KustoBaseDialect
 
 
@@ -18,23 +18,14 @@ class date_trunc(GenericFunction):  # noqa: N801
 @compiles(date_trunc, "kustosql")
 def _compile_date_trunc(element, compiler, **kw):
     grain_clause, col_clause = list(element.clauses)
+    grain = getattr(grain_clause, "value", None)
+    if grain is None:
+        grain = compiler.process(grain_clause, literal_binds=True, **kw)
 
-    if hasattr(grain_clause, "value"):
-        grain = str(grain_clause.value).strip("'\" ").lower()
-    else:
-        grain = compiler.process(grain_clause, literal_binds=True, **kw).strip("'\" ").lower()
-
-    t_sql_part = _GRAIN_TO_TSQL.get(grain, grain)
-    epoch = _GRAIN_EPOCH.get(grain, "0")
-    col = compiler.process(col_clause, **kw)
-
-    if grain == "week":
-        # T-SQL DATEDIFF(week,...) counts Sunday boundaries, but epoch 0 is Monday.
-        # Shift the input back 1 day so Sunday stays inside its Mon-Sat week,
-        # producing ISO-standard Monday-based truncation (matches PostgreSQL semantics).
-        return f"DATEADD({t_sql_part}, DATEDIFF({t_sql_part}, {epoch}, DATEADD(day, -1, {col})), {epoch})"
-
-    return f"DATEADD({t_sql_part}, DATEDIFF({t_sql_part}, {epoch}, {col}), {epoch})"
+    expression = _date_trunc_expr(str(grain), compiler.process(col_clause, **kw))
+    if expression is None:
+        raise exc.CompileError(f"Unsupported date_trunc grain for Kusto: {grain}")
+    return expression
 
 
 class KustoSqlCompiler(compiler.SQLCompiler):
@@ -46,7 +37,10 @@ class KustoSqlCompiler(compiler.SQLCompiler):
             kw["literal_execute"] = True
             select_precolumns += f"TOP {self.process(select._limit_clause, **kw)} "
         elif select._order_by_clauses:
-            # Kusto T-SQL requires a TOP clause when ORDER BY is present without LIMIT
+            # Kusto T-SQL drops ORDER BY unless the same SELECT also carries a TOP,
+            # which is how Superset loses sorting on the inner query of a wrapped SELECT.
+            # ponytail: silently caps the result at max_top_n rows; pass a bigger
+            # max_top_n to create_engine if a dataset can legitimately exceed it.
             select_precolumns += f"TOP {self.dialect.max_top_n} "
 
         return select_precolumns
@@ -61,10 +55,14 @@ class KustoSqlCompiler(compiler.SQLCompiler):
     def visit_empty_set_expr(self, element_types):
         pass
 
-    def update_from_clause(self, update_stmt, from_table, extra_froms, from_hints, **kw):
+    def update_from_clause(
+        self, update_stmt, from_table, extra_froms, from_hints, **kw
+    ):
         pass
 
-    def delete_extra_from_clause(self, update_stmt, from_table, extra_froms, from_hints, **kw):
+    def delete_extra_from_clause(
+        self, update_stmt, from_table, extra_froms, from_hints, **kw
+    ):
         pass
 
 
@@ -78,5 +76,10 @@ class KustoSqlHttpsDialect(KustoBaseDialect):
     supports_statement_cache = True
 
     def __init__(self, max_top_n: int = 500_000, **kwargs):
+        """Row cap used for ORDER BY without LIMIT.
+
+        Override per engine: create_engine(url, max_top_n=1_000_000). In Superset it
+        goes into the database's Advanced → Other → Engine Parameters.
+        """
         super().__init__(**kwargs)
         self.max_top_n = max_top_n
