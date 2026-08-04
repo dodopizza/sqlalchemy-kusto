@@ -20,6 +20,7 @@ from tests.integration.conftest import (
     AZURE_AD_CLIENT_SECRET,
     AZURE_AD_TENANT_ID,
     DATABASE,
+    KUSTO_KQL_ALCHEMY_URL,
     KUSTO_SQL_ALCHEMY_URL,
     USES_EMULATOR,
     get_kcsb,
@@ -39,6 +40,7 @@ engine = create_engine(
 
 ROW_COUNT = 9  # rows the fixture ingests into the temp table
 NESTED_LIMIT = 5  # outer limit used by the wrapped-query tests
+EVENTS_ROW_COUNT = 3  # rows in the datetime fixture
 
 
 def test_ping():
@@ -208,6 +210,67 @@ def test_unsupported_date_trunc_grain_is_rejected(temp_events_table, grain: str)
         engine.execute(
             f"select top 1 date_trunc('{grain}', Ts) from {temp_events_table}"
         ).fetchall()
+
+
+@pytest.mark.parametrize(
+    ("expression", "expected"),
+    [
+        # spellings analysts actually used in production SQLLab queries
+        ("DATETRUNC('hour', Ts)", datetime(2024, 5, 17, 10, 0)),
+        ("DATETRUNC(month, Ts)", datetime(2024, 5, 1)),
+        ("startofday(Ts)", datetime(2024, 5, 17)),
+        ("startofmonth(Ts)", datetime(2024, 5, 1)),
+        ("startofweek(Ts)", datetime(2024, 5, 12)),  # KQL weeks start on Sunday
+        ("DATE(Ts)", datetime(2024, 5, 17)),
+        ("to_date(Ts)", datetime(2024, 5, 17)),
+    ],
+)
+def test_translated_date_functions(
+    temp_events_table, expression: str, expected: datetime
+):
+    """Functions Kusto rejects verbatim must work through the translation."""
+    engine.connect()
+    result = engine.execute(
+        f"select top 1 {expression} as value from {temp_events_table} order by Ts"
+    )
+    assert result.fetchone()[0].replace(tzinfo=None) == expected
+
+
+def test_translated_scalar_functions(temp_events_table):
+    """date_part and ifnull have exact T-SQL equivalents; check both on real data."""
+    engine.connect()
+    row = engine.execute(
+        f"select top 1 DATE_PART(hour, Ts) as h, IFNULL(Id, -1) as i "
+        f"from {temp_events_table} order by Ts"
+    ).fetchone()
+    assert (row[0], row[1]) == (10, 1)
+
+
+def test_cte_is_sent_as_tsql(temp_events_table):
+    """A query starting with WITH used to be sent as KQL and fail before reaching SQL."""
+    engine.connect()
+    result = engine.execute(
+        f"with daily as (select date_trunc('day', Ts) as d from {temp_events_table}) "
+        f"select top 1 d from daily order by d"
+    )
+    assert result.fetchone()[0].replace(tzinfo=None) == datetime(2024, 5, 17)
+
+
+def test_kql_query_still_runs_on_the_kql_dialect(temp_events_table):
+    """The SQL/KQL split must not misroute a KQL query that starts with a table name."""
+    kql_engine = create_engine(
+        f"{KUSTO_KQL_ALCHEMY_URL}/{DATABASE}"
+        if USES_EMULATOR
+        else (
+            f"{KUSTO_KQL_ALCHEMY_URL}/{DATABASE}?"
+            f"msi=False&azure_ad_client_id={AZURE_AD_CLIENT_ID}&"
+            f"azure_ad_client_secret={AZURE_AD_CLIENT_SECRET}&"
+            f"azure_ad_tenant_id={AZURE_AD_TENANT_ID}"
+        )
+    )
+    kql_engine.connect()
+    rows = kql_engine.execute(f"{temp_events_table} | count").fetchall()
+    assert rows[0][0] == EVENTS_ROW_COUNT
 
 
 def _create_temp_table(table_name: str):

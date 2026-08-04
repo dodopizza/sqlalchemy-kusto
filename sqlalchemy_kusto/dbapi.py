@@ -30,8 +30,6 @@ _GRAIN_TO_TSQL: dict[str, tuple[str, str]] = {
     "year": ("year", "0"),
 }
 
-_DATE_TRUNC_MARKER = "date_trunc("
-
 
 def _date_trunc_expr(grain: str, expr: str) -> str | None:
     """Build the T-SQL equivalent of date_trunc(grain, expr), or None if the grain is unknown.
@@ -66,15 +64,16 @@ def _skip_literal(sql: str, start: int) -> int:
     return len(sql)  # unterminated literal: treat the remainder as opaque
 
 
-def _split_date_trunc_args(sql: str, start: int) -> tuple[str, str, int] | None:
-    """Parse `grain, expr)` starting at `start`.
+def _split_call_args(sql: str, start: int) -> tuple[list[str], int] | None:
+    """Split the argument list of a call whose '(' ends just before `start`.
 
-    Returns (grain, expr, index just past the closing paren), or None when the call
-    is malformed, so the caller can leave such SQL for Kusto to reject.
+    Returns (arguments, index just past the closing paren), or None when the call is
+    unbalanced, so the caller can leave such SQL for Kusto to reject. Commas inside
+    nested calls and inside string literals do not split.
     """
+    args: list[str] = []
     depth = 1
-    comma = None
-    i = start
+    arg_start = i = start
     while i < len(sql):
         char = sql[i]
         if char in "'\"":
@@ -85,20 +84,57 @@ def _split_date_trunc_args(sql: str, start: int) -> tuple[str, str, int] | None:
         elif char == ")":
             depth -= 1
             if depth == 0:
-                return (sql[start:comma], sql[comma + 1 : i], i + 1) if comma else None
-        elif char == "," and depth == 1 and comma is None:
-            comma = i
+                args.append(sql[arg_start:i])
+                return args, i + 1
+        elif char == "," and depth == 1:
+            args.append(sql[arg_start:i])
+            arg_start = i + 1
         i += 1
     return None
 
 
-def _translate_raw_date_trunc(sql: str) -> str:
-    """Rewrite date_trunc('grain', expr) in a raw SQL string as T-SQL DATEADD/DATEDIFF.
+def _date_part_expr(unit: str, expr: str) -> str | None:
+    """date_part('unit', x) → DATEPART(unit, x); T-SQL spells the unit bare."""
+    part = unit.strip().strip("'\"").lower()
+    if not part.isalpha():
+        return None
+    return f"DATEPART({part}, {expr})"
 
-    Applied in Cursor.execute() so it covers every execution path including Superset SQLLab,
-    which calls the DBAPI cursor directly via engine.raw_connection(), bypassing dialect hooks.
-    Function and grain names match case-insensitively; string literals and unknown grains
-    are left untouched.
+
+# Functions Kusto's T-SQL emulation does not implement, mapped to the form it does.
+# Every replacement here was executed against the Kusto emulator; anything without an
+# exact equivalent (FORMAT, DATE_FORMAT, TRY_CAST, JSON_VALUE, OPENJSON) is left alone
+# on purpose, so Kusto reports it instead of us guessing at the semantics.
+_CALL_TRANSLATIONS: dict[str, tuple[int, Any]] = {
+    # name: (argument count, builder)
+    "date_trunc": (2, _date_trunc_expr),
+    "datetrunc": (2, _date_trunc_expr),  # T-SQL 2022 spelling, same arguments
+    "date_part": (2, _date_part_expr),
+    "startofday": (1, lambda expr: _date_trunc_expr("day", expr)),
+    "startofweek": (1, lambda expr: _date_trunc_expr("week_sun", expr)),
+    "startofmonth": (1, lambda expr: _date_trunc_expr("month", expr)),
+    "startofyear": (1, lambda expr: _date_trunc_expr("year", expr)),
+    "ifnull": (2, lambda a, b: f"COALESCE({a}, {b})"),
+    # Kusto has a single datetime type, so CAST/CONVERT to DATE keeps the time of day.
+    # DATE(x) and to_date(x) are expected to drop it, which is a truncation to the day.
+    "to_date": (1, lambda expr: _date_trunc_expr("day", expr)),
+    "date": (1, lambda expr: _date_trunc_expr("day", expr)),
+}
+
+# Longest first, so "date" cannot shadow "date_trunc".
+_TRANSLATION_NAMES_LONGEST_FIRST = sorted(_CALL_TRANSLATIONS, key=len, reverse=True)
+# First letters of those names: lets the scanner skip most characters outright.
+_TRANSLATION_FIRST_CHARS = frozenset(name[0] for name in _CALL_TRANSLATIONS)
+_IDENTIFIER_CHARS = frozenset('_.[]"')
+
+
+def _translate_raw_functions(sql: str) -> str:
+    """Rewrite calls Kusto cannot parse into their T-SQL equivalents.
+
+    Applied in Cursor.execute() so it covers every execution path including Superset
+    SQLLab, which talks to the DBAPI cursor directly and bypasses the dialect hooks.
+    Names match case-insensitively; string literals, unknown grains and unknown call
+    shapes are left untouched.
     """
     result: list[str] = []
     sql_lower = sql.lower()
@@ -111,22 +147,81 @@ def _translate_raw_date_trunc(sql: str) -> str:
             i = end
             continue
 
-        if not sql_lower.startswith(_DATE_TRUNC_MARKER, i):
+        match = _match_call_name(sql, sql_lower, i)
+        if match is None:
             result.append(sql[i])
             i += 1
             continue
 
-        parsed = _split_date_trunc_args(sql, i + len(_DATE_TRUNC_MARKER))
-        if parsed is None:
+        name, args_start = match
+        arity, builder = _CALL_TRANSLATIONS[name]
+        parsed = _split_call_args(sql, args_start)
+        if parsed is None:  # unbalanced parentheses: leave the remainder as it is
             result.append(sql[i:])
             break
 
-        grain, expr, end = parsed
-        translated = _date_trunc_expr(grain, _translate_raw_date_trunc(expr.strip()))
+        args, end = parsed
+        if len(args) != arity or any(not arg.strip() for arg in args):
+            result.append(sql[i:end])
+            i = end
+            continue
+
+        translated = builder(*(_translate_raw_functions(arg.strip()) for arg in args))
         result.append(translated if translated is not None else sql[i:end])
         i = end
 
     return "".join(result)
+
+
+def _match_call_name(sql: str, sql_lower: str, i: int) -> tuple[str, int] | None:
+    """Return (function name, index just past its '(') if a known call starts at `i`."""
+    if sql_lower[i] not in _TRANSLATION_FIRST_CHARS:
+        return None  # cheap gate: no translated name starts with this character
+    previous = sql[i - 1] if i else ""
+    if previous.isalnum() or previous in _IDENTIFIER_CHARS:
+        return None  # part of a longer identifier, e.g. my_date(
+    for name in _TRANSLATION_NAMES_LONGEST_FIRST:
+        if not sql_lower.startswith(name, i):
+            continue
+        after = i + len(name)
+        while after < len(sql) and sql[after] in " \t\r\n":
+            after += 1  # `date (x)` is the same call as `date(x)`
+        if sql[after : after + 1] == "(":
+            return name, after + 1
+    return None
+
+
+def is_tsql_query(operation: str) -> bool:
+    """Whether to send `operation` as T-SQL rather than KQL.
+
+    Kusto needs the query language up front and the only hint available is the text.
+    A leading WITH counts: Kusto executes CTEs, and treating those as KQL used to make
+    every CTE query fail before it was even sent. Leading whitespace, semicolons and
+    comments are skipped; scanning them by hand keeps this linear, which a regex with
+    a repeated alternation would not be.
+    """
+    i, length = 0, len(operation)
+    while i < length:
+        char = operation[i]
+        if char.isspace() or char == ";":
+            i += 1
+        elif operation.startswith("--", i):
+            end = operation.find("\n", i)
+            i = length if end == -1 else end + 1
+        elif operation.startswith("/*", i):
+            end = operation.find("*/", i)
+            i = length if end == -1 else end + 2
+        else:
+            break
+    for keyword in ("select", "with"):
+        end = i + len(keyword)
+        if operation[i:end].lower() != keyword:
+            continue
+        # must be a whole word: `withdrawals | count` is a KQL table, not a CTE
+        following = operation[end : end + 1]
+        if not (following.isalnum() or following == "_"):
+            return True
+    return False
 
 
 def check_closed(func):
@@ -317,10 +412,10 @@ class Cursor:
     @check_closed
     def execute(self, operation, parameters=None) -> "Cursor":
         """Executes query. Supports only SELECT statements."""
-        if operation.lower().startswith("select"):
+        if is_tsql_query(operation):
             self.properties.set_option("query_language", "sql")
             # T-SQL only: a KQL query must never be rewritten.
-            operation = _translate_raw_date_trunc(operation)
+            operation = _translate_raw_functions(operation)
         else:
             self.properties.set_option("query_language", "kql")
 
