@@ -64,6 +64,25 @@ def _skip_literal(sql: str, start: int) -> int:
     return len(sql)  # unterminated literal: treat the remainder as opaque
 
 
+def _skip_opaque(sql: str, i: int) -> int | None:
+    """Index just past the literal or comment starting at `i`, else None.
+
+    Comments must be skipped, not just left in place: an apostrophe inside one
+    ("-- don't ask") would otherwise be read as the start of a string literal and
+    swallow the rest of the query, so a real call after it never got translated.
+    """
+    char = sql[i]
+    if char in "'\"":
+        return _skip_literal(sql, i)
+    if sql.startswith("--", i):
+        end = sql.find("\n", i)
+        return len(sql) if end == -1 else end + 1
+    if sql.startswith("/*", i):
+        end = sql.find("*/", i)
+        return len(sql) if end == -1 else end + 2
+    return None
+
+
 def _split_call_args(sql: str, start: int) -> tuple[list[str], int] | None:
     """Split the argument list of a call whose '(' ends just before `start`.
 
@@ -76,8 +95,9 @@ def _split_call_args(sql: str, start: int) -> tuple[list[str], int] | None:
     arg_start = i = start
     while i < len(sql):
         char = sql[i]
-        if char in "'\"":
-            i = _skip_literal(sql, i)
+        skipped = _skip_opaque(sql, i)
+        if skipped is not None:
+            i = skipped
             continue
         if char == "(":
             depth += 1
@@ -141,8 +161,8 @@ def _translate_raw_functions(sql: str) -> str:
     i = 0
 
     while i < len(sql):
-        if sql[i] in "'\"":  # never rewrite anything inside a string literal
-            end = _skip_literal(sql, i)
+        end = _skip_opaque(sql, i)  # never rewrite inside a literal or a comment
+        if end is not None:
             result.append(sql[i:end])
             i = end
             continue

@@ -340,6 +340,33 @@ class TestTranslateOtherFunctions:
     def test_left_unchanged(self, sql: str):
         assert _translate_raw_functions(sql) == sql
 
+    @pytest.mark.parametrize(
+        ("sql", "expected"),
+        [
+            # an apostrophe in a comment used to be read as a string literal, which
+            # swallowed the rest of the query and left the real call untranslated
+            (
+                "-- don't ask\nSELECT date_trunc('day', ts) FROM t",
+                "-- don't ask\nSELECT DATEADD(day, DATEDIFF(day, 0, ts), 0) FROM t",
+            ),
+            (
+                "/* it's a header */ SELECT date_trunc('day', ts) FROM t",
+                "/* it's a header */ SELECT DATEADD(day, DATEDIFF(day, 0, ts), 0) FROM t",
+            ),
+            # a call inside a comment stays a comment, untouched
+            (
+                "SELECT 1 -- date_trunc('day', x)\nFROM t",
+                "SELECT 1 -- date_trunc('day', x)\nFROM t",
+            ),
+            (
+                "SELECT /* date_trunc('day', x) */ 1 FROM t",
+                "SELECT /* date_trunc('day', x) */ 1 FROM t",
+            ),
+        ],
+    )
+    def test_comments_are_opaque(self, sql: str, expected: str):
+        assert _translate_raw_functions(sql) == expected
+
     def test_nested_mix_is_translated_throughout(self):
         result = _translate_raw_functions(
             "SELECT IFNULL(date_trunc('day', startofmonth(ts)), DATE(other)) FROM t"
