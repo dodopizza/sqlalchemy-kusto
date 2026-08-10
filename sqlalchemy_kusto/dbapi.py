@@ -113,6 +113,20 @@ def _split_call_args(sql: str, start: int) -> tuple[list[str], int] | None:
     return None
 
 
+def _fold_lower_literal(arg: str) -> str | None:
+    """lower('LITERAL') → 'literal'; anything but a single string literal stays put.
+
+    Kusto requires a LIKE pattern to be a string literal and rejects lower('%x%')
+    with "OTR0001: LIKE pattern is not a string" — yet SQLAlchemy's stock ILIKE
+    compiles to exactly lower(x) LIKE lower(y). Folding the constant keeps the
+    pattern a literal without losing the case-insensitive match; lower() on the
+    left-hand column is valid Kusto and passes through untouched.
+    """
+    if arg.startswith("'") and _skip_literal(arg, 0) == len(arg):
+        return arg.lower()
+    return None
+
+
 def _date_part_expr(unit: str, expr: str) -> str | None:
     """date_part('unit', x) → DATEPART(unit, x); T-SQL spells the unit bare."""
     part = unit.strip().strip("'\"").lower()
@@ -139,6 +153,7 @@ _CALL_TRANSLATIONS: dict[str, tuple[int, Any]] = {
     # DATE(x) and to_date(x) are expected to drop it, which is a truncation to the day.
     "to_date": (1, lambda expr: _date_trunc_expr("day", expr)),
     "date": (1, lambda expr: _date_trunc_expr("day", expr)),
+    "lower": (1, _fold_lower_literal),
 }
 
 # Longest first, so "date" cannot shadow "date_trunc".
@@ -432,15 +447,16 @@ class Cursor:
     @check_closed
     def execute(self, operation, parameters=None) -> "Cursor":
         """Executes query. Supports only SELECT statements."""
-        if is_tsql_query(operation):
-            self.properties.set_option("query_language", "sql")
-            # T-SQL only: a KQL query must never be rewritten.
-            operation = _translate_raw_functions(operation)
-        else:
-            self.properties.set_option("query_language", "kql")
+        tsql = is_tsql_query(operation)
+        self.properties.set_option("query_language", "sql" if tsql else "kql")
 
         query = Cursor._apply_parameters(operation, parameters)
         query = query.rstrip()
+        if tsql:
+            # After parameter substitution, so a bound ILIKE pattern inside
+            # lower(%(p)s) can fold into the string literal Kusto requires.
+            # T-SQL only: a KQL query must never be rewritten.
+            query = _translate_raw_functions(query)
         try:
             server_response = self.kusto_client.execute(
                 self.database, query, self.properties

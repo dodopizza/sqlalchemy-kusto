@@ -67,6 +67,31 @@ def test_boolean_filter_full_query():
     assert "true" not in sql.lower()
 
 
+class TestIlikeLowerFolding:
+    """Kusto's LIKE pattern must be a string literal (OTR0001) and LIKE on a
+    column is case-sensitive, so the stock ILIKE form lower(x) LIKE lower(y)
+    must keep its left lower() but fold the right one into a lowered literal.
+    """
+
+    def test_lower_literal_folds(self):
+        """Mirrors the Superset filter-search query from the bug report."""
+        sql = "SELECT Name FROM t WHERE lower(Name) LIKE lower('%ФрЕш%')"
+        expected = "SELECT Name FROM t WHERE lower(Name) LIKE '%фреш%'"
+        assert _translate_raw_functions(sql) == expected
+
+    def test_lower_of_column_is_left_alone(self):
+        """lower(column) is valid Kusto; only constants can fold."""
+        sql = "SELECT lower(Name) FROM t WHERE lower(Name) = 'x'"
+        assert _translate_raw_functions(sql) == sql
+
+    def test_lower_with_non_literal_expression_is_left_alone(self):
+        sql = "SELECT 1 WHERE lower('a' + Name) = 'ab'"
+        assert _translate_raw_functions(sql) == sql
+
+    def test_folded_literal_keeps_quote_escapes(self):
+        assert _translate_raw_functions("lower('О''Хара')") == "'о''хара'"
+
+
 class TestOrderByWithoutLimit:
     """Kusto rejects ORDER BY in a nested SELECT that has no TOP; top level is fine."""
 
@@ -441,6 +466,16 @@ class TestCursorDateTruncTranslation:
         sql = "SELECT id, name FROM users WHERE active = 1"
         cursor.execute(sql)
         assert client.execute.call_args[0][1] == sql
+
+    def test_bound_ilike_pattern_folds_after_parameters(self):
+        """Parameters land first, then the rewrite, so a bound pattern can fold."""
+        cursor, client = self._cursor()
+        cursor.execute(
+            "SELECT Name FROM t WHERE lower(Name) LIKE lower(%(pat)s)",
+            {"pat": "%ФрЕш%"},
+        )
+        received_sql = client.execute.call_args[0][1]
+        assert received_sql == "SELECT Name FROM t WHERE lower(Name) LIKE '%фреш%'"
 
     def test_kql_query_is_never_rewritten(self):
         """A KQL query is not T-SQL; DATEADD would be invalid there."""

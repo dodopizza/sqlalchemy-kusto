@@ -149,6 +149,18 @@ def test_nested_order_by_is_sorted(temp_table_name):
     assert len(ids) == NESTED_LIMIT
 
 
+def test_ilike_matches_case_insensitively(temp_table_name):
+    """Superset's filter search compiles to ilike; Kusto rejects the stock
+    lower(x) LIKE lower(y) form (OTR0001: LIKE pattern is not a string), so the
+    dialect emits plain LIKE and relies on Kusto matching case-insensitively.
+    """
+    table = _table(temp_table_name)
+
+    engine.connect()
+    result = engine.execute(table.select().where(table.c.Text.ilike("%VALUE_1%")))
+    assert [row[1] for row in result.fetchall()] == ["value_1"]
+
+
 def test_nested_order_by_without_top_is_rejected_by_kusto(temp_table_name):
     """Why the TOP fallback exists: Kusto refuses this shape outright.
 
