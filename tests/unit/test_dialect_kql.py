@@ -175,9 +175,10 @@ def test_group_by_text():
     ).replace("\n", "")
     # raw query text from query
     query_expected = (
-        '["ActiveUsersLastMonth"]| extend ["ActiveUserMetric"] = ["ActiveUsers"], '
-        '["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
+        '["ActiveUsersLastMonth"]'
         '| summarize   by ["EventInfo_Time"] / time(1d)'
+        '| extend ["ActiveUserMetric"] = ["ActiveUsers"], '
+        '["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| project ["EventInfo_Time"], ["ActiveUserMetric"]'
         '| order by ["ActiveUserMetric"] desc'
     )
@@ -224,10 +225,11 @@ def test_group_by_text_vaccine_dataset():
         query.compile(engine, compile_kwargs={"literal_binds": True})
     ).replace("\n", "")
     query_expected = (
-        'database("superset").["CovidVaccineData"]| '
-        'extend ["country_name"] = ["country_name"]| '
-        'summarize   by ["country_name"]| '
-        'project ["country_name"]| order by ["country_name"] asc'
+        'database("superset").["CovidVaccineData"]'
+        '| summarize   by ["country_name"]'
+        '| extend ["country_name"] = ["country_name"]'
+        '| project ["country_name"]'
+        '| order by ["country_name"] asc'
     )
     assert query_compiled == query_expected
 
@@ -326,8 +328,8 @@ def test_distinct_count_by_text():
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| summarize ["DistinctUsers"] = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
+        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| project ["EventInfo_Time"], ["DistinctUsers"]'
         '| order by ["ActiveUserMetric"] desc'
     )
@@ -352,8 +354,8 @@ def test_distinct_count_alt_by_text():
     # raw query text from query
     query_expected = (
         '["ActiveUsersLastMonth"]'
-        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| summarize ["DistinctUsers"] = dcount(["ActiveUsers"])  by ["EventInfo_Time"] / time(1d)'
+        '| extend ["EventInfo_Time"] = ["EventInfo_Time"] / time(1d)'
         '| project ["EventInfo_Time"], ["DistinctUsers"]'
         '| order by ["ActiveUserMetric"] desc'
     )
@@ -545,6 +547,131 @@ def test_match_aggregates(column_name: str, expected_aggregate: str):
         assert kql_agg == expected_aggregate
     else:
         assert kql_agg is None
+
+
+def test_escape_and_quote_columns_with_two_quoted_measures():
+    """Test that two quoted measure names with operator are properly escaped.
+
+    e.g. "Measure 1" + "Measure 2" --> ["Measure 1"] + ["Measure 2"]
+    """
+    result = KustoKqlCompiler._escape_and_quote_columns('"Measure 1" + "Measure 2"')
+    assert result == '["Measure 1"] + ["Measure 2"]'
+
+
+def test_escape_and_quote_columns_preserves_already_bracketed():
+    """Test that already-bracketed columns are not double-converted."""
+    result = KustoKqlCompiler._escape_and_quote_columns('["Measure 1"]')
+    assert result == '["Measure 1"]'
+
+
+def test_calculated_measure_with_two_adhoc_measures():
+    """Test calculated measure referencing two ad hoc measures.
+
+    Measure 3 = "Measure 1" + "Measure 2" should compile to ["Measure 1"] + ["Measure 2"]
+    """
+    measure_3 = literal_column('"Measure 1" + "Measure 2"').label("Measure 3")
+    query = select([measure_3]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| extend ["Measure 3"] = ["Measure 1"] + ["Measure 2"]'
+        '| project ["Measure 3"]'
+    )
+    assert query_compiled == query_expected
+
+
+def test_escape_and_quote_columns_measure_with_constant():
+    """Test that measure with operator and constant is properly escaped.
+
+    e.g. "Measure 1" * 2 --> ["Measure 1"] * 2
+    """
+    result = KustoKqlCompiler._escape_and_quote_columns('"Measure 1" * 2')
+    assert result == '["Measure 1"] * 2'
+
+
+def test_escape_and_quote_columns_measure_with_operator_in_name():
+    """Test that measure names containing operators are properly escaped.
+
+    e.g. "Measure 1-2" --> ["Measure 1-2"] (not split as ["Measure 1"] - ["2"])
+    """
+    result = KustoKqlCompiler._escape_and_quote_columns('"Measure 1-2"')
+    assert result == '["Measure 1-2"]'
+
+
+def test_is_number_literal():
+    """Test _is_number_literal correctly identifies numeric literals."""
+    # Should match: integers and decimals with digits on both sides of decimal
+    assert KustoKqlCompiler._is_number_literal("5") is True
+    assert KustoKqlCompiler._is_number_literal("123") is True
+    assert KustoKqlCompiler._is_number_literal("0") is True
+    assert KustoKqlCompiler._is_number_literal("0.5") is True
+    assert KustoKqlCompiler._is_number_literal("5.0") is True
+    assert KustoKqlCompiler._is_number_literal("123.456") is True
+
+    # Should NOT match: trailing decimal, leading decimal, scientific notation, negatives
+    assert KustoKqlCompiler._is_number_literal("5.") is False
+    assert KustoKqlCompiler._is_number_literal(".5") is False
+    assert KustoKqlCompiler._is_number_literal("-5") is False
+    assert KustoKqlCompiler._is_number_literal("-0.5") is False
+    assert KustoKqlCompiler._is_number_literal("1e10") is False
+    assert KustoKqlCompiler._is_number_literal("1.5e-3") is False
+
+    # Should NOT match: non-numeric strings
+    assert KustoKqlCompiler._is_number_literal("abc") is False
+    assert KustoKqlCompiler._is_number_literal("Measure 1") is False
+    assert KustoKqlCompiler._is_number_literal("") is False
+
+
+def test_calculated_measure_with_adhoc_measure_and_constant():
+    """Test calculated measure with an ad hoc measure and a constant.
+
+    Measure 1 = count(*), Measure 2 = "Measure 1" * 2
+    Measure 2 should compile to ["Measure 1"] * 2
+    """
+    measure_1 = literal_column("count(*)").label("Measure 1")
+    measure_2 = literal_column('"Measure 1" * 2').label("Measure 2")
+    query = select([measure_1, measure_2]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    query_expected = (
+        '["SalesData"]'
+        '| summarize ["Measure 1"] = count() '
+        '| extend ["Measure 2"] = ["Measure 1"] * 2'
+        '| project ["Measure 1"], ["Measure 2"]'
+    )
+    assert query_compiled == query_expected
+
+
+def test_calculated_measure_with_two_adhoc_measures_and_aggregates():
+    """Test calculated measure referencing two ad hoc measures with aggregates.
+
+    Measure 1 = count(*), Measure 2 = count(*)
+    Measure 3 = "Measure 1" + "Measure 2" should compile to ["Measure 1"] + ["Measure 2"]
+    """
+    measure_1 = literal_column("count(*)").label("Measure 1")
+    measure_2 = literal_column("count(*)").label("Measure 2")
+    measure_3 = literal_column('"Measure 1" + "Measure 2"').label("Measure 3")
+    query = select([measure_1, measure_2, measure_3]).select_from(text("SalesData"))
+    query_compiled = str(
+        query.compile(engine, compile_kwargs={"literal_binds": True})
+    ).replace("\n", "")
+    # Summarize columns come from a set so order may vary
+    query_expected_1 = (
+        '["SalesData"]'
+        '| summarize ["Measure 1"] = count(), ["Measure 2"] = count() '
+        '| extend ["Measure 3"] = ["Measure 1"] + ["Measure 2"]'
+        '| project ["Measure 1"], ["Measure 2"], ["Measure 3"]'
+    )
+    query_expected_2 = (
+        '["SalesData"]'
+        '| summarize ["Measure 2"] = count(), ["Measure 1"] = count() '
+        '| extend ["Measure 3"] = ["Measure 1"] + ["Measure 2"]'
+        '| project ["Measure 1"], ["Measure 2"], ["Measure 3"]'
+    )
+    assert query_compiled in (query_expected_1, query_expected_2)
 
 
 @pytest.mark.parametrize(
