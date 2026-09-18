@@ -3,7 +3,7 @@ from setuptools import find_packages, setup
 
 NAME = "sqlalchemy-kusto"
 DESCRIPTION = "Azure Data Explorer (Kusto) dialect for SQLAlchemy"
-VERSION = "3.1.2"
+VERSION = "3.2.0"
 
 
 REQUIREMENTS = [
@@ -37,6 +37,7 @@ setup(
     entry_points={
         "sqlalchemy.dialects": [
             "kustosql.https = sqlalchemy_kusto.dialect_sql:KustoSqlHttpsDialect",
+            "kustosql.http = sqlalchemy_kusto.dialect_sql:KustoSqlHttpDialect",
             "kustokql.https = sqlalchemy_kusto.dialect_kql:KustoKqlHttpsDialect",
         ]
     },

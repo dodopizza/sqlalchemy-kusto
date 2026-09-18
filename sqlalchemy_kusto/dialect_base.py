@@ -78,8 +78,12 @@ class KustoBaseDialect(default.DefaultDialect, ABC):
         return sqlalchemy_kusto
 
     def create_connect_args(self, url: URL) -> tuple[list[Any], dict[str, Any]]:
+        # The driver part of the URL carries the scheme: kustosql+https:// for a real
+        # cluster, kustosql+http:// for the Kusto emulator (plain HTTP, custom port).
+        scheme = url.get_driver_name() or "https"
+        host = url.host if url.port is None else f"{url.host}:{url.port}"
         kwargs: dict[str, Any] = {
-            "cluster": "https://" + url.host,
+            "cluster": f"{scheme}://{host}",
             "database": url.database,
         }
 
