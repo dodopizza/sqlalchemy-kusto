@@ -67,6 +67,7 @@ lint.ignore = [
     "ARG002",  # Unused method argument
 
     "PLR0913", # Too many arguments in function definition
+    "PLR0917", # Too many positional arguments
 ]
 
 [tool.ruff.lint.pycodestyle]
