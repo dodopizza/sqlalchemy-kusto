@@ -73,8 +73,8 @@ emulator: # Start the Kusto emulator and wait until it answers
 	@echo "Starting the Kusto emulator..."
 	docker run -e ACCEPT_EULA=Y -m 4G -d -p 8080:8080 --name $(EMULATOR_NAME) $(EMULATOR_IMAGE)
 	@echo "Waiting for the query engine..."
-	@until curl -s -m 3 -o /dev/null -X POST -H 'Content-Type: application/json' \
-		-d '{"csl":".show cluster"}' http://localhost:8080/v1/rest/mgmt; do sleep 2; done
+	@timeout 300 sh -c "until curl -s -m 3 -o /dev/null -X POST -H 'Content-Type: application/json' \
+		-d '{\"csl\":\".show cluster\"}' http://localhost:8080/v1/rest/mgmt; do sleep 2; done"
 	@echo "Ready on http://localhost:8080 (database NetDefaultDB).\n"
 
 emulator-stop: # Remove the emulator container
