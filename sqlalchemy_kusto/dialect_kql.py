@@ -3,7 +3,6 @@ import re
 
 from sqlalchemy import Column, exc, sql
 from sqlalchemy.sql import compiler, operators, selectable
-from sqlalchemy.sql.compiler import OPERATORS
 
 from sqlalchemy_kusto.dialect_base import KustoBaseDialect
 
@@ -82,7 +81,6 @@ class KustoKqlIdentifierPreparer(compiler.IdentifierPreparer):
 
 
 class KustoKqlCompiler(compiler.SQLCompiler):
-    OPERATORS[operators.and_] = " and "
     delete_extra_from_clause = None
     update_from_clause = None
     visit_empty_set_expr = None
@@ -161,6 +159,18 @@ class KustoKqlCompiler(compiler.SQLCompiler):
 
     def limit_clause(self, select, **kw):
         return ""
+
+    def visit_clauselist(self, clauselist, **kw):
+        kql_operators = {
+            operators.and_: " and ",
+            operators.or_: " or ",
+        }
+        
+        if clauselist.operator in kql_operators:
+            sep = kql_operators[clauselist.operator]
+            return self._generate_delimited_list(clauselist.clauses, sep, **kw)
+            
+        return super().visit_clauselist(clauselist, **kw)
 
     def _legacy_join(self, select_stmt: selectable.Select, **kwargs):
         """Consumes arguments from join() or outerjoin(), places them into a
@@ -528,11 +538,6 @@ class KustoKqlCompiler(compiler.SQLCompiler):
             where_clause,
             flags=re.IGNORECASE,
         )
-        # Handle logical operators 'AND' and 'OR' to ensure the conditions are preserved
-        # Replace AND with 'and' in KQL
-        where_clause = re.sub(r"\s+AND\s+", r" and ", where_clause, flags=re.IGNORECASE)
-        # Replace OR with 'or' in KQL
-        where_clause = re.sub(r"\s+OR\s+", r" or ", where_clause, flags=re.IGNORECASE)
         return where_clause
 
     @staticmethod
