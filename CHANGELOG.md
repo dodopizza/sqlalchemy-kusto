@@ -24,7 +24,7 @@ Fixed:
 Changed output:
 
 - String literals are double-quoted (`"ru"`), not single-quoted.
-- `text()` in `FROM` passes through as written; `schema.table` is no longer converted to `database("schema").["table"]` (pass `schema=` on the table instead).
+- `text()` in `FROM` passes through as written, except a text that is only a table name: `["s"].["t"]`, `s."t"` or `s.t` becomes `database("s").["t"]` (Superset's SQL Lab table preview is built this way). A table name inside a longer KQL text is not converted.
 - Table aliases are ignored (KQL has none); column references never carry a table prefix.
 - Bind parameters are always rendered inline; `supports_statement_cache` is off.
 

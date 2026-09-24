@@ -285,6 +285,14 @@ def test_schema_renders_as_database():
     assert run(query) == [(8,)]
 
 
+def test_select_star_table_preview():
+    # Superset's SQL Lab table preview: select * from text(quote_schema(s) + "." + quote(t))
+    preparer = engine.dialect.identifier_preparer
+    name = f"{preparer.quote_schema(DATABASE)}.{preparer.quote(TABLE)}"
+    query = select([count]).select_from(text(name))
+    assert run(query) == [(8,)]
+
+
 def test_join_two_physical_tables():
     other = "KqlIds_" + uuid.uuid4().hex
     with engine.connect() as connection:

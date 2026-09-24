@@ -102,6 +102,13 @@ _KQL_TEXT = re.compile(
 _TRAILING_DIRECTION = re.compile(
     r"\s+(asc|desc)(\s+nulls\s+(?:first|last))?\s*$", re.IGNORECASE
 )
+# One name of a table reference: ["name"] (this dialect's quoting), "name" or bare.
+_TABLE_NAME_PART = r'\["(?:[^"\\]|\\.)*"\]|"(?:[^"\\]|\\.)*"|[A-Za-z_][\w-]*'
+# A FROM text that is nothing but [schema.]table, the way Superset's select_star
+# spells it: text(quote_schema(schema) + "." + quote(table)).
+_TABLE_REFERENCE = re.compile(
+    rf"\s*(?:(?P<schema>{_TABLE_NAME_PART})\s*\.\s*)?(?P<table>{_TABLE_NAME_PART})\s*"
+)
 
 
 def _normalize_kql_text(text: str) -> str:
@@ -481,10 +488,33 @@ class KustoKqlCompiler(compiler.SQLCompiler):
                 return "(" + self.process(element, asfrom=True, **kw) + ")"
             return self._source(element, **kw)  # KQL has no table aliases
         if isinstance(from_obj, elements.TextClause):
-            return from_obj.text.strip()
+            return self._text_source(from_obj.text)
         raise exc.CompileError(
             f"Unsupported FROM clause for KQL: {type(from_obj).__name__}"
         )
+
+    def _text_source(self, text: str) -> str:
+        """FROM text: a bare [schema.]table becomes a KQL table reference, anything else is KQL.
+
+        Superset builds the SQL Lab table preview as select * from text('["events"].["T"]').
+        KQL has no schema.table syntax (SEM0139), so a text that is only a table name is
+        rendered like a TableClause: database("events").["T"].
+        """
+        match = _TABLE_REFERENCE.fullmatch(text)
+        if match is None:
+            return text.strip()
+        name = self.preparer.quote(self._unquote_name(match.group("table")))
+        if match.group("schema") is None:
+            return name
+        schema = self._unquote_name(match.group("schema"))
+        return f"database({self.render_literal_value(schema, sqltypes.String())}).{name}"
+
+    def _unquote_name(self, part: str) -> str:
+        if part.startswith('["'):
+            return self.preparer._unescape_identifier(part[2:-2])
+        if part.startswith('"'):
+            return part[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+        return part
 
     def _add_let(self, name: str, script: str) -> None:
         statements = split_statements(script)

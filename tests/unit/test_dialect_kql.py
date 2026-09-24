@@ -567,6 +567,26 @@ def test_text_from_passes_through():
     assert compile_kql(query) == 'logs | where x == 1\n| project ["Field1"]\n| take 100'
 
 
+@pytest.mark.parametrize(
+    ("from_text", "source"),
+    [
+        # Superset's select_star: quote_schema(schema) + "." + quote(table)
+        ('["events"].["DrinkitAppEvents"]', 'database("events").["DrinkitAppEvents"]'),
+        ('b2b."IotMeasurementsHourly"', 'database("b2b").["IotMeasurementsHourly"]'),
+        ("datalake.Orders", 'database("datalake").["Orders"]'),
+        ('["a.b c"]', '["a.b c"]'),
+        ('["say \\"hi\\""].T', 'database("say \\"hi\\"").["T"]'),
+        ("Orders", '["Orders"]'),
+        # anything that is not just a name is KQL and stays as written
+        ('database("x").T', 'database("x").T'),
+        ("T | take 5", "T | take 5"),
+    ],
+)
+def test_text_from_table_reference(from_text, source):
+    query = select("*").select_from(text(from_text)).limit(100)
+    assert compile_kql(query) == f"{source}\n| take 100"
+
+
 def test_join_of_two_tables():
     left = sa.table("Events", column("Id"), column("Text"))
     right = sa.table("IdTable", column("Id"))
