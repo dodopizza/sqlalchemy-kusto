@@ -12,7 +12,33 @@ Current implementation has full support for SQL queries. But pay your attention 
 
 ## KQL dialect
 
-KQL dialect still in progress. Please, use it on your own risk for now.
+The KQL dialect compiles a SQLAlchemy `Select` into a native KQL pipeline. It is built
+for the statements Apache Superset generates for charts, datasets and filter values:
+
+| SQLAlchemy | KQL |
+|---|---|
+| physical table, `schema` | `["Table"]`, `database("schema").["Table"]` |
+| virtual dataset (`text(kql).alias("virtual_table")`) | `let virtual_table = (<kql>);` — `let` statements and `//` comments of the dataset are hoisted to the top of the script |
+| `where` with `==`, `!=`, `<`, `in_`, `notin_`, `between`, `is_(None)`, `isnot(None)`, `and_`, `or_`, `not_` | `==`, `!=`, `<`, `in`, `!in`, `between (a .. b)`, `isnull()`, `isnotnull()`, `and`, `or`, `not()` |
+| `like` / `ilike` by pattern shape: `%x%`, `x%`, `%x`, `x` | `contains_cs` / `contains`, `startswith_cs` / `startswith`, `endswith_cs` / `endswith`, `==` / `=~`; a `%` in the middle becomes `matches regex`; `_` is literal |
+| `func.COUNT(col)`, `func.COUNT(distinct(col))`, `SUM`, `AVG`, `MIN`, `MAX` | `countif(isnotnull(col))`, `dcount(col)`, `sum`, `avg`, `min`, `max` |
+| `literal_column("COUNT(*)")`, `literal_column("SUM(x)")`, saved metrics | `count()`, `sum(x)`; KQL text passes through, aggregate names are lowercased |
+| `.label()` + `group_by` | `summarize alias = agg() by alias = expr` |
+| `having` | `where` after `summarize`; a repeated aggregate (`count(*) > 5`) is replaced by its alias |
+| `distinct()` | `distinct` |
+| `order_by`, `limit`, `offset` | `order by ... asc/desc`, `take`, `serialize \| where row_number() > n` |
+| `join` on a grouped subquery (Superset series limit) | `join kind=inner (<subquery>) on $left.["k"] == $right.["k__"]` |
+
+Bind parameters are always rendered inline (Kusto has none), so statement caching is
+off for this dialect. String literals are double-quoted with backslash escaping.
+
+Not supported: DDL/DML, several sources in `FROM`, joins on anything but column
+equality, `LIKE` patterns with a bound (non-literal) right-hand side.
+
+For Superset there are two known limitations on the Superset side: a virtual dataset
+whose KQL contains `let` statements is rejected as "multiple statements", and custom
+SQL expressions go through sqlglot which uppercases function names (the dialect
+lowercases them back).
 
 > Notice that implemented Kusto dialects don't support DDL statements and inserts, deletes, updates.
 

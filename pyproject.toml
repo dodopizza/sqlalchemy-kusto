@@ -7,6 +7,8 @@ build-backend = "setuptools.build_meta"
 
 [tool.ruff]
 target-version = "py310"
+# Hand-off probes for the Superset fork, not part of the package.
+extend-exclude = ["docs/handoff"]
 
 # https://beta.ruff.rs/docs/settings/#line-length
 line-length = 120
@@ -69,6 +71,10 @@ lint.ignore = [
     "PLR0913", # Too many arguments in function definition
     "PLR0917", # Too many positional arguments
 ]
+
+[tool.ruff.lint.per-file-ignores]
+# Tests compare against literal KQL text and row counts; naming every number is noise.
+"tests/**" = ["PLR2004", "E501", "PLC0415"]
 
 [tool.ruff.lint.pycodestyle]
 max-doc-length = 120

@@ -27,9 +27,8 @@ registry.register(
 registry.register(
     "kustokql.https", "sqlalchemy_kusto.dialect_kql", "KustoKqlHttpsDialect"
 )
-# The KQL dialect needs no HTTP subclass: the scheme comes from the URL, not the class.
 registry.register(
-    "kustokql.http", "sqlalchemy_kusto.dialect_kql", "KustoKqlHttpsDialect"
+    "kustokql.http", "sqlalchemy_kusto.dialect_kql", "KustoKqlHttpDialect"
 )
 
 load_dotenv()
